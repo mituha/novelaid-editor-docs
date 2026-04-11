@@ -2,6 +2,8 @@
 
 小説執筆用アプリ、`novelaid-editor`関連のドキュメントをまとめてあります。
 
+https://mituha.github.io/novelaid-editor-docs/
+
 
 # リポジトリ
 
