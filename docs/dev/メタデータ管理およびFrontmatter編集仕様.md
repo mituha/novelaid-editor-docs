@@ -11,42 +11,45 @@
 
 ## 2. アーキテクチャ設計
 
+Frontmatter の実際の抽出（パース）および保存時の再結合（シリアライズ）は、**Rust 側（`tauri-plugin-novelaid-fs`）** のネイティブ処理（`serde_yaml`）によって安全・高速に行われます。
+フロントエンドは純粋な小説本文と JSON メタデータオブジェクトを受け取り、`MetadataPanel` から `updateMetadata` を呼び出すだけでディスクへの YAML 変換・保存が完結します。
+
 ```mermaid
-flowchart TD
-    subgraph Document["Markdown ドキュメント (DocumentContext)"]
-        FileContent["ファイル全体テキスト\n(--- YAML Frontmatter ---\n本文...)"]
-        Parser["Frontmatter パーサー & シリアライザー\n(js-yaml / gray-matter / 独自パーサー)"]
-        State["DocumentState\n- content (本文)\n- metadata (Record<string, any>)\n- rawFrontmatter"]
-        FileContent <--> Parser <--> State
-    end
+sequenceDiagram
+    autonumber
+    actor User as ユーザー / 作家
+    participant Panel as MetadataPanel (React)
+    participant Ctx as DocumentContext
+    participant Rust as tauri-plugin-novelaid-fs (Rust)
+    participant Disk as ローカルディスク (.md)
 
-    subgraph RightPane["右サイドペイン (ドキュメント個別)"]
-        MetaPlugin["メタデータパネルプラグイン\n(novelaid.panel.metadata)"]
-        MetaPanel["MetadataPanel\n- 基本情報 (title, tags, summary)\n- クイックタグトグル (登場人物/地名/プロット)\n- 詳細属性 (id, name, reading, role等)\n- カスタムフィールド動的追加"]
-        MetaPlugin --> MetaPanel
-    end
+    Note over Rust,Disk: 【ファイル読み込み時】
+    Disk->>Rust: ファイル全体のテキストを読み込み
+    Rust->>Rust: extract_frontmatter (serde_yaml でパース)<br/>メタデータと本文を分離
+    Rust->>Ctx: NovelaidDocument { content: 本文, metadata: JSON }
+    Ctx->>Panel: metadata (タイトル, タグ, キャラクター属性等) をフォーム表示
 
-    subgraph LeftPane["左サイドペイン (プロジェクト全体)"]
-        ListPlugin["設定資料一覧プラグイン\n(novelaid.panel.characters / metadataList)"]
-        ListPanel["MetadataListPanel\n- 登場人物一覧 (character タグ)\n- 地名・舞台一覧 (location タグ)\n- プロット一覧 (plot タグ)"]
-        ListPlugin --> ListPanel
-    end
-
-    State <-->|"双方向リアクティブ同期"| MetaPanel
-    State -.->|"プロジェクト内タグ収集"| ListPanel
+    Note over User,Panel: 【メタデータ編集・保存時】
+    User->>Panel: タグ選択やキャラクター設定を入力
+    Panel->>Ctx: updateMetadata(path, newMetadata)
+    User->>Ctx: Ctrl + S (保存実行)
+    Ctx->>Rust: write_document(path, content, metadata)
+    Rust->>Rust: format_frontmatter (serde_yaml で再シリアライズ)<br/>---\nYAML\n---\n本文 を結合
+    Rust->>Disk: ディスクへ安全に書き込み
 ```
 
 ---
 
 ## 3. 機能要件
 
-### 3.1 Frontmatter の双方向同期基盤
-1. **パース（読み込み）**:
-   - ファイルオープン時、先頭の `---` で囲まれた YAML ブロックをパースし、オブジェクト（`Record<string, any>`）として `metadata` ステートに保持。
-   - `---` が存在しないファイルでも、メタデータパネルで編集が開始された際に自動で先頭に `---` を付与。
-2. **シリアライズ（保存）**:
-   - メタデータパネルで値（タイトル、タグ、あらすじ等）が変更された場合、本文（Body）と結合してファイル内容をリアルタイム更新。
-   - エディターで直接 Frontmatter の YAML テキストを編集した場合も、メタデータパネルのフォームに即時反映。
+### 3.1 Rustバックエンドとフロントエンドの同期基盤
+1. **パース（読み込み / `tauri-plugin-novelaid-fs`）**:
+   - `read_document` 実行時、Rust側が `extract_frontmatter`（`serde_yaml`）で先頭の `---\n...---\n` をパース。
+   - エディターには純粋な小説本文（`content`）のみが渡され、メタデータは `metadata: serde_json::Value` として分離されます。
+2. **シリアライズ（保存 / `tauri-plugin-novelaid-fs`）**:
+   - `write_document` 実行時、Rust側が `format_frontmatter`（`serde_yaml::to_string`）でメタデータを YAML 化し、先頭に `---\n...---\n` を付与して本文と結合した上でディスクに書き込みます。
+3. **フロントエンド状態管理 (`DocumentContext`)**:
+   - `DocumentState` に保持されている `metadata` を、`updateMetadata(path: string, metadata: Record<string, any>)` によって更新・ダーティフラグ（`isDirty: true`）管理します。
 
 ### 3.2 ドキュメントメタデータ編集パネル (`MetadataPanel`)
 右ペイン用プラグイン（`novelaid.panel.metadata` / アイコン: `Database` または `Tag` / `defaultPlacement: 'right'`）として提供。
