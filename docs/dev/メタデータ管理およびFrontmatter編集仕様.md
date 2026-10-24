@@ -101,3 +101,10 @@ sequenceDiagram
 | **Step 2** | **ドキュメントメタデータ編集パネルの実装**<br>- `MetadataPanel` コンポーネント作成<br>- 基本情報、クイックタグ、キャラクター属性、カスタムフィールド<br>- 右ペインプラグイン（`novelaid.panel.metadata`）登録 | `src/components/Metadata/MetadataPanel.tsx`<br>`src/components/Metadata/MetadataPanel.css`<br>`src/plugins/panels/MetadataPanelPlugin.tsx`<br>`src/core/panelRegistry/index.ts` |
 | **Step 3** | **設定資料・登場人物一覧パネルの実装**<br>- プロジェクト横断でのタグ別メタデータ抽出フック<br>- `MetadataListPanel` コンポーネント作成<br>- アコーディオンツリーによる一覧・ワンクリックオープン | `src/hooks/useProjectMetadata.ts`<br>`src/components/Metadata/MetadataListPanel.tsx`<br>`src/plugins/panels/MetadataListPanelPlugin.tsx` |
 | **Step 4** | **検証・自動スクリーンショット撮影 & ドキュメント更新**<br>- Playwright撮影スクリプト更新（メタデータパネル表示状態）<br>- `docs/manual/メタデータと設定資料の使い方.md` 作成<br>- メイキング連載第16回記事の執筆と目次更新<br>- バージョン更新 & Gitコミット | `scripts/capture-screenshots.js`<br>`docs/manual/メタデータと設定資料の使い方.md`<br>`making/notes/16_メタデータ管理とFrontmatter編集パネルの実装.md`<br>`making/logs/2026-10-24.md` |
+
+---
+
+## 6. UIスクリーンショット
+
+![メタデータ編集パネルとプレビュー画面（ダークモード）](./images/16_メタデータ編集パネル_ダークモード.png)
+
