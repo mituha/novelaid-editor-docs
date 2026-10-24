@@ -1,19 +1,69 @@
-# AI関連機能および pi-coding-agent 連携設計計画書
+# AI関連機能および pi-coding-agent 連携設計計画書（tauri-plugin-novelaid-ai）
 
 ## 1. 概要と背景
 
-本ドキュメントは、**`novelaide`** における AI 執筆支援機能の実装において、先行プロジェクト（`novelaid-editor`）の独自実装から方針を刷新し、**`@earendil-works/pi-coding-agent` SDK** および **`novelaid-cli`** を共通バックボーンとして統合・連携するための設計計画を策定するものです。
+本ドキュメントは、**`novelaide`** における AI 執筆支援機能の実装において、先行プロジェクト（`novelaid-editor`）の独自実装から方針を刷新し、独立した Tauri プラグイン **`tauri-plugin-novelaid-ai`** として構築するとともに、**`@earendil-works/pi-coding-agent` SDK** および **`novelaid-cli`** を共通バックボーンとして統合・連携するための設計仕様を定義するものです。
 
 ### 1.1 基本方針
-1. **モデルアクセスおよびツール利用の画一化**:
+1. **独立Tauriプラグイン化 (`tauri-plugin-novelaid-ai`)**:
+   - `tauri-plugin-novelaid-fs`、`tauri-plugin-restar-settings`、`tauri-plugin-restar-git` と同様、AI機能も独立したTauriプラグインとして設計・構築し、アプリ本体との結合度を最小限に保ちます。
+2. **モデルアクセスおよびツール利用の画一化**:
    - LLM（Gemini, OpenAI, Anthropic, LM Studio / ローカルLLM等）へのアクセスやストリーミング処理をアプリ独自で再実装せず、実績のある `@earendil-works/pi-coding-agent` に委ねて処理を大幅に簡略化します。
    - 原稿の読み込み・差分編集・校正などのツール呼び出し（Function Calling / Tools）を Pi SDK のプロトコルに画一化します。
-2. **`novelaid-cli` との機能共有（二刀流アーキテクチャ）**:
+3. **`novelaid-cli` との機能共有（二刀流アーキテクチャ）**:
    - `novelaid-cli` は「小説執筆補助特化型AIエージェントCLI」としてすでに Pi SDK エコシステム上に構築されています。
    - ルビ処理、文末重複・誤字脱字校正スキャン、フォルダー境界管理などの小説執筆ロジックを共有し、CLI と GUI で同一の知見・体験を提供します。
-3. **GUIチャットパネルと組み込みターミナルの両面アプローチ**:
+4. **GUIチャットパネルと組み込みターミナルの両面アプローチ**:
    - **GUI側**: 右ペインまたは専用ビューの `ChatPanel` で直感的にAIと相談・推敲・執筆。
    - **CLI側（将来・拡張）**: アプリ下部に統合ターミナル（`xterm.js` + PTY）を内蔵し、CLIのフルTUI対話画面を直接操作可能にする。
+
+---
+
+## 2. ディレクトリ構成 (`tauri-plugin-novelaid-ai`)
+
+```text
+tauri-plugin-novelaid-ai/
+├── Cargo.toml                       # Rustクレート定義
+├── build.rs                         # Tauriコマンドパーミッション生成
+├── permissions/
+│   └── default.toml                 # デフォルト許可パーミッション
+├── src/
+│   ├── lib.rs                       # プラグイン初期化
+│   ├── commands.rs                  # AI IPC コマンド群
+│   └── error.rs                     # エラー定義
+├── guest-js/
+│   ├── index.ts                     # APIエクスポート
+│   ├── types.ts                     # AiMessage, AiPersona, AiModel, ToolCall
+│   └── client.ts                    # invoke / listen ラッパー関数
+├── package.json                     # "name": "tauri-plugin-novelaid-ai-api"
+├── tsconfig.json
+└── rollup.config.js                 # dist-js へのバンドル
+
+novelaide/
+├── src/
+│   ├── contexts/
+│   │   └── AiContext.tsx            # AIセッション状態管理
+│   ├── components/
+│   │   └── AI/
+│   │       ├── ChatPanel.tsx        # 右ペイン AI 執筆チャットパネル
+│   │       ├── ChatPanel.css
+│   │       ├── PersonaSelector.tsx  # ペルソナ選択UI
+│   │       └── MessageItem.tsx      # メッセージ吹き出し & 差分確認ボタン
+│   └── plugins/
+│       └── panels/
+│           └── AiPanelPlugin.tsx    # PanelRegistry 登録 (novelaid.panel.ai)
+```
+
+---
+
+## 3. IPC コマンドおよびAPI仕様
+
+| コマンド名 | 引数 | 戻り値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `ai_is_available` | なし | `bool` | LM Studio などの AI サービスが接続可能か判定 |
+| `ai_get_models` | なし | `Result<Vec<AiModel>, String>` | 利用可能なモデル一覧（LM Studio等）を取得 |
+| `ai_send_message` | `prompt: String, persona: String, context: Option<String>` | `Result<String, String>` | メッセージを送信しAIの応答・推敲案を取得（ストリーミングイベント連動） |
+| `ai_run_tool` | `tool_name: String, target_file: String, params: Value` | `Result<Value, String>` | ルビ振り、校正、差分生成等の執筆支援ツールを直接実行 |
 
 ---
 
