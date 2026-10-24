@@ -10,129 +10,108 @@
 2. **モデルアクセスおよびツール利用の画一化**:
    - LLM（Gemini, OpenAI, Anthropic, LM Studio / ローカルLLM等）へのアクセスやストリーミング処理をアプリ独自で再実装せず、実績のある `@earendil-works/pi-coding-agent` に委ねて処理を大幅に簡略化します。
    - 原稿の読み込み・差分編集・校正などのツール呼び出し（Function Calling / Tools）を Pi SDK のプロトコルに画一化します。
-3. **`novelaid-cli` との機能共有（二刀流アーキテクチャ）**:
-   - `novelaid-cli` は「小説執筆補助特化型AIエージェントCLI」としてすでに Pi SDK エコシステム上に構築されています。
-   - ルビ処理、文末重複・誤字脱字校正スキャン、フォルダー境界管理などの小説執筆ロジックを共有し、CLI と GUI で同一の知見・体験を提供します。
-4. **GUIチャットパネルと組み込みターミナルの両面アプローチ**:
-   - **GUI側**: 右ペインまたは専用ビューの `ChatPanel` で直感的にAIと相談・推敲・執筆。
+3. **責務分割とRust高速処理の最大活用（内部プロセス内蔵方式の脱却）**:
+   - `novelaid-cli` のプロセスを丸ごと GUI 内部で常駐・同期させる方法は、メタデータ走査の重複や未保存バッファとの同期不整合、メモリ消費などの無駄が大きいため採用しません。
+   - 代わりに、**重いデータ処理（メタデータ検索、Frontmatterキャッシュ参照、大容量テキストの校正スキャンやルビ抽出）は Rust レイヤ（`tauri-plugin-novelaid-fs` / `tauri-plugin-novelaid-ai`）が担当**し、ミリ秒単位の超高速処理を実現します。
+4. **`novelaid-cli` との共通化（共通ライブラリ・仕様レベルでの共有）**:
+   - `novelaid-cli` とのコード共有は、独立した共通パッケージ（`novelaid-ruby`、`novelaid-markdown`、校正ルール・プロンプト定義）を通じて行います。
+   - `novelaid-cli` 側は Node.js ベースの軽量・簡易版として独立して動作させ、GUI の複雑な内部キャッシュに依存しないシンプルな構造を保ちます。
+5. **GUIチャットパネルと組み込みターミナルの両面アプローチ**:
+   - **GUI側**: 右ペインの `ChatPanel` で直感的にAIと相談・推敲・執筆。エディターの未保存テキストや選択範囲ともリアルタイムに連携。
    - **CLI側（将来・拡張）**: アプリ下部に統合ターミナル（`xterm.js` + PTY）を内蔵し、CLIのフルTUI対話画面を直接操作可能にする。
 
 ---
 
-## 2. ディレクトリ構成 (`tauri-plugin-novelaid-ai`)
-
-```text
-tauri-plugin-novelaid-ai/
-├── Cargo.toml                       # Rustクレート定義
-├── build.rs                         # Tauriコマンドパーミッション生成
-├── permissions/
-│   └── default.toml                 # デフォルト許可パーミッション
-├── src/
-│   ├── lib.rs                       # プラグイン初期化
-│   ├── commands.rs                  # AI IPC コマンド群
-│   └── error.rs                     # エラー定義
-├── guest-js/
-│   ├── index.ts                     # APIエクスポート
-│   ├── types.ts                     # AiMessage, AiPersona, AiModel, ToolCall
-│   └── client.ts                    # invoke / listen ラッパー関数
-├── package.json                     # "name": "tauri-plugin-novelaid-ai-api"
-├── tsconfig.json
-└── rollup.config.js                 # dist-js へのバンドル
-
-novelaide/
-├── src/
-│   ├── contexts/
-│   │   └── AiContext.tsx            # AIセッション状態管理
-│   ├── components/
-│   │   └── AI/
-│   │       ├── ChatPanel.tsx        # 右ペイン AI 執筆チャットパネル
-│   │       ├── ChatPanel.css
-│   │       ├── PersonaSelector.tsx  # ペルソナ選択UI
-│   │       └── MessageItem.tsx      # メッセージ吹き出し & 差分確認ボタン
-│   └── plugins/
-│       └── panels/
-│           └── AiPanelPlugin.tsx    # PanelRegistry 登録 (novelaid.panel.ai)
-```
-
----
-
-## 3. IPC コマンドおよびAPI仕様
-
-| コマンド名 | 引数 | 戻り値 | 説明 |
-| :--- | :--- | :--- | :--- |
-| `ai_is_available` | なし | `bool` | LM Studio などの AI サービスが接続可能か判定 |
-| `ai_get_models` | なし | `Result<Vec<AiModel>, String>` | 利用可能なモデル一覧（LM Studio等）を取得 |
-| `ai_send_message` | `prompt: String, persona: String, context: Option<String>` | `Result<String, String>` | メッセージを送信しAIの応答・推敲案を取得（ストリーミングイベント連動） |
-| `ai_run_tool` | `tool_name: String, target_file: String, params: Value` | `Result<Value, String>` | ルビ振り、校正、差分生成等の執筆支援ツールを直接実行 |
-
----
-
-## 2. アーキテクチャ構成案
+## 2. アーキテクチャ構成
 
 ```mermaid
 flowchart TD
-    subgraph GUI["novelaide (Tauri 2.x + React)"]
-        Editor["Monaco Editor\n(小説本文 / 差分比較)"]
-        ChatPanel["AIChatPanel\n(右ペイン / 執筆パートナー)"]
-        TerminalPanel["TerminalPanel (将来)\n(xterm.js 組み込みターミナル)"]
-        FSPlugin["tauri-plugin-novelaid-fs\n(ファイル監視 / 永続化)"]
+    subgraph Shared["共通仕様・パッケージ層"]
+        SpecRuby["novelaid-ruby (ルビ記法ルール)"]
+        SpecMD["novelaid-markdown (拡張Markdown描画)"]
+        Rules["校正ルール定義 / プロンプトテンプレート"]
     end
 
-    subgraph Bridge["IPC / RPC 通信ブリッジ"]
-        Sidecar["Tauri Sidecar / RPC サービス\n(novelaid-cli --serve または Node.js エージェント)"]
+    subgraph Novelaide["novelaide (Tauri 2.x + React)"]
+        Editor["Monaco Editor (本文 / 差分比較)"]
+        ChatPanel["AIChatPanel (右ペイン / 執筆パートナー)"]
+        Ctx["AiContext (対話状態 / 未保存バッファ連携)"]
+        AI_Plugin["tauri-plugin-novelaid-ai (Rust)"]
+        FS_Plugin["tauri-plugin-novelaid-fs (Rust メタデータキャッシュ / 高速走査)"]
+        
+        ChatPanel <--> Ctx
+        Ctx <--> AI_Plugin
+        AI_Plugin <-->|"超高速検索・キャッシュ参照"| FS_Plugin
+        Editor -.->|"編集中バッファ直接注入"| Ctx
     end
 
     subgraph Backbone["AIバックボーン (@earendil-works/pi-coding-agent)"]
         AgentSession["AgentSession (対話・コンテキスト管理)"]
-        ToolManager["ToolManager (ファイル編集 / ルビ / 校正)"]
-        Provider["ModelRuntime\n(LM Studio / Gemini / Claude / OpenAI)"]
+        ToolRegistry["ToolRegistry (search_metadata / proofread / ruby)"]
+        Provider["ModelRuntime (LM Studio / Gemini / OpenAI)"]
+        
+        AI_Plugin <--> AgentSession
+        AgentSession --> ToolRegistry
+        AgentSession --> Provider
+        ToolRegistry -->|"ツールハンドラー実行"| AI_Plugin
     end
 
-    ChatPanel <-->|"IPC / WebSocket"| Sidecar
-    Sidecar <--> AgentSession
-    AgentSession --> ToolManager
-    AgentSession --> Provider
-    ToolManager -->|"ファイル直接編集 (edit)"| ProjectFiles[".md 小説原稿ファイル"]
-    ProjectFiles -.->|"ファイル変更検知"| FSPlugin
-    FSPlugin -.->|"自動リロード / 差分ハイライト"| Editor
-    TerminalPanel <-->|"PTY / CLI実行"| Sidecar
+    subgraph NovelaidCli["novelaid-cli (独立CLI)"]
+        CLI["pi-coding-agent CLI Runner"]
+        SimpleFS["Node.js 簡易ファイル走査"]
+        CLI --> SimpleFS
+    end
+
+    Shared -.-> Novelaide
+    Shared -.-> NovelaidCli
 ```
 
 ---
 
-## 3. `novelaid-cli` との機能共有方式の検討
+## 3. `novelaid-cli` との連携および機能共有方式の再検討
 
-`novelaide` は Tauri（Rust + ブラウザWebView）であり、`pi-coding-agent` は Node.js 環境前提の SDK です。機能共有および通信方式として以下の3方式を検討しました。
+当初検討された「`novelaid-cli` プロセスをそのまま内部で常駐動作させる方式（Sidecar方式）」について再検討を行った結果、以下の構造的課題が判明しました。
 
-### 比較検討表
+1. **データ走査・キャッシュの二重化と同期不整合**:
+   - `novelaide` ではすでに Rust（`tauri-plugin-novelaid-fs`）により、メタデータ（Frontmatter）のキャッシュ収集や高速走査が行われています。
+   - 外部プロセスから `novelaid-cli` を動かすと、CLI 側で再度同一のファイルを走査・パースする必要があり、メモリやCPUの無駄が生じるだけでなく、エディターで編集中（未保存）のバッファデータと同期がとれなくなります。
+2. **ランタイムの冗長性とオーバーヘッド**:
+   - Tauri デスクトップアプリの内部に Node.js ランタイムや子プロセスを常駐させることで、メモリ消費やプロセス管理の複雑さが増大します。
 
-| 方式 | 概要 | メリット | デメリット | 推奨度 |
-| :--- | :--- | :--- | :--- | :---: |
-| **案1: Tauri Sidecar / ローカルRPC方式** | `novelaid-cli` をバックグラウンドの子プロセス（Sidecar）として起動し、JSON-RPC またはローカル WebSocket で GUI とストリーミング通信 | ・`novelaid-cli` の全資産・全ツールが 100% そのまま動作<br>・GUIの `ChatPanel` と完全連携<br>・モデル認証・LM Studio連携を共通化 | ・Node.js ランタイムまたはバイナリが必要 | **◎ 最推奨** |
-| **案2: 共通ロジックのNPMパッケージ化** | `proofread.ts`, `ruby.ts` 等を共有パッケージ（`novelaid-agent-core`）として切り出す | ・コードの重複を防止 | ・モデル呼び出し部分は結局 Node.js 側で動かす必要がある | **◯ 併用推奨** |
-| **案3: 組み込みターミナル方式 (xterm.js)** | Tauri 内に PTY（擬似端末）を立ち上げ、下部ペインで `novelaid-cli` の TUI 画面をそのまま描画 | ・CLIのフル機能（スラッシュコマンド、Tab補完）をアプリ内で直接体感可能 | ・GUIコンポーネントとの密な連携（ボタン操作など）は別途必要 | **◎ 将来実装として最適** |
+### 採用する新方針：内部責務分割 ＆ コード・仕様レベルでの共通化
 
-### 結論と採用方針
-- **AIバックボーン連携**: **「案1（Sidecar / ローカルRPC方式）」** を採用。`novelaid-cli` のエージェント機能（`AgentSession`）を GUI から呼び出し可能にする。
-- **ターミナル連携**: **「案3」** を下部パネルの拡張機能として位置づけ、GUI チャットと CLI ターミナルのどちらからでも同一の小説プロジェクトを扱える構成とする。
+- **`novelaide`（GUI / `tauri-plugin-novelaid-ai`）側**:
+  - `tauri-plugin-novelaid-ai` がホストアプリの Rust レイヤおよびフロントエンドと直接繋がります。
+  - **メタデータ検索 (`search_metadata`)**: `tauri-plugin-novelaid-fs` の Rust メタデータキャッシュを直接参照し、数十万字の原稿でもミリ秒単位で応答。
+  - **校正スキャン (`proofread_scan`)・ルビ抽出 (`ruby_suggest`)**: Rust 側の高速文字列処理・正規表現エンジンを活用。未保存のエディターバッファに対しても即座に実行可能。
+- **`novelaid-cli`（CLI）側**:
+  - ターミナル上で独立して動作する軽量なスタンドアローン版とし、Node.js ベースの簡易なファイル走査で動作。
+  - GUIのような複雑なキャッシュ機構を持たない分、コードはシンプルで保守しやすくなります（「簡易版」としての位置づけ）。
+- **共通化の手段**:
+  - ルビ記法やMarkdown構文は `novelaid-ruby` / `novelaid-markdown` として共通化。
+  - 校正ルール定義やプロンプトテンプレート（ペルソナ設定等）を共通の仕様・定義モジュールとして共有します。
+  - 将来的なターミナル連携（組み込みターミナル）は、純粋な PTY（擬似端末UI）として下部ペインに配置し、CLI 自体を操作する用途に特化させます。
 
 ---
 
 ## 4. 提供するAI機能とツール（Function Calling）
 
-`pi-coding-agent` のツール機構を活用し、以下の執筆特化ツールを統一的に提供します。
+`pi-coding-agent` のツール規格に準拠し、以下の執筆特化ツールを `tauri-plugin-novelaid-ai` でネイティブ提供します。
 
-1. **ルビ自動設定ツール (`ruby_suggest` / `apply_ruby`)**:
+1. **メタデータ高速検索ツール (`search_metadata`)**:
+   - `tauri-plugin-novelaid-fs` の Rust キャッシュから、登場人物の設定、地名、プロットメモを瞬時に検索・要約して AI の文脈に注入。
+2. **ルビ候補抽出・設定ツール (`ruby_suggest` / `apply_ruby`)**:
    - `novelaid-ruby` 準拠の `|親文字《ルビ》` 書式。
    - 初出の難読漢字や固有名詞を自動検出し、エディターに差分適用。
-2. **文章校正・推敲ツール (`proofread_scan`)**:
-   - 同音異義語の誤り（「以外 / 意外」など）、文末「〜た。」の連続使用、ら抜き言葉のスキャン。
+3. **文章校正・推敲ツール (`proofread_scan`)**:
+   - 同音異義語の誤り、文末「〜た。」の連続使用、ら抜き言葉のスキャンを Rust 側で高速解析。
    - 修正箇所のハイライトとワンクリック置換。
-3. **ペルソナ別壁打ちチャット (`persona_chat`)**:
+4. **ペルソナ別壁打ちチャット (`persona_chat`)**:
+   - 「執筆パートナー」（共創・アイデア出し）
    - 「担当編集者」（プロット構成・展開のアドバイス）
    - 「校正係」（文章のリズム・誤字脱字の精査）
-   - 「登場人物」（作中キャラクター視点でのセリフ・心情相談）
-4. **原稿直接編集・差分レビュー (`edit_file`)**:
+   - 「作中人物」（登場人物視点での台詞・心情相談）
+5. **原稿直接編集・差分レビュー (`edit_file`)**:
    - AIが提案した文章改変を Monaco Diff Editor で直接プレビューし、作家が確認・承認して取り込み。
 
 ---
@@ -141,10 +120,10 @@ flowchart TD
 
 | フェーズ | 作業内容 |
 | :--- | :--- |
-| **Phase 1: バックボーン連携プロトタイプの構築** | ・`novelaid-cli` に GUI 連携用の RPC / IPC エンドポイント（対話・ストリーミング・ツール実行）を準備<br>・Tauri 側から Node.js / CLI プロセスとの通信導通を確認 |
-| **Phase 2: GUIチャットパネル (`AIChatPanel`) の実装** | ・右ペインまたは左右対称ペインに `novelaid.panel.ai` を登録<br>・ストリーミングテキスト受信、ペルソナ切り替え UI<br>・現在開いている原稿やメタデータの自動コンテキスト注入 |
-| **Phase 3: 執筆ツールの画一化と Monaco Diff 連携** | ・ルビ振り、校正指摘、文章改善のツール実行<br>・AIの修正案を Monaco Diff Editor で左右比較してワンクリック適用 |
-| **Phase 4: 組み込みターミナルパネルの実装 (拡張)** | ・`xterm.js` を用いた下部ターミナルペインの実装<br>・`novelaid-cli` のフル TUI 画面を GUI 内で直接操作可能に |
+| **Phase 1: プラグイン基盤とUIの実装 (完了)** | ・独立プラグイン `tauri-plugin-novelaid-ai` の新設<br>・4ペルソナ、モデル選択、原稿文脈注入、UIチャットパネル |
+| **Phase 2: Rust高速ツール実行ハンドラーの実装 (今回)** | ・`tauri-plugin-novelaid-ai` の `ai_run_tool` にて `search_metadata`, `proofread_scan`, `ruby_suggest` を実装<br>・未保存原稿バッファや `tauri-plugin-novelaid-fs` キャッシュとの連携 |
+| **Phase 3: 執筆ツールの画一化と Monaco Diff 連携** | ・AIの文章改善案を Monaco Diff Editor で左右比較してワンクリック適用 |
+| **Phase 4: 組み込みターミナルパネルの実装 (拡張)** | ・`xterm.js` を用いた下部ターミナルペインの実装<br>・`novelaid-cli` を PTY 端末経由で操作可能に |
 
 ---
 
@@ -153,4 +132,3 @@ flowchart TD
 ![AI執筆パートナー（ダークモード）](../../novelaide/docs/dev/images/17_AI執筆パートナー_ダークモード.png)
 
 *4種類のペルソナ（執筆パートナー、担当編集者、校正係、作中人物）の切り替え、モデル選択、原稿文脈注入、およびツール呼び出し（ルビ候補抽出・校正スキャン）を備えたAIチャットパネル。*
-
