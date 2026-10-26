@@ -39,8 +39,9 @@
    - `.css` → `css`
    - その他 → `unknown`
 
-2. **`.novelaidattributes` によるカスタマイズ判定 (現行 `novelaid-editor` のみ実装)**
-   - マークダウンファイルなどであっても、親ディレクトリに `.novelaidattributes` ファイルが存在し、そこにファイル名パターンとタイプのマッピングが定義されている場合は、そのタイプを最優先で適用します。
+2. **`.novelaidattributes` によるカスタマイズ判定**
+   - マークダウンファイルなどであっても、同一ディレクトリに `.novelaidattributes` ファイルが存在し、そこにファイル名パターンとタイプのマッピングが定義されている場合は、そのタイプを最優先で適用します。
+   - 構文や判定アルゴリズムの詳細は **[novelaidattributes 共通仕様](./novelaidattributes仕様.md)** を参照してください。
 
 ### 3.2. ディレクトリの判定
 新規ファイル作成時のデフォルト形式の決定や、ツリー表示での分類のために、ディレクトリ自体にも推奨ドキュメントタイプを割り当てます。
@@ -51,9 +52,10 @@
    - `画像`, `image` を含む場合 → `image`
    - `チャット`, `chat`, `channel`, `チャンネル` を含む場合 → `chat`
 
-2. **`.novelaidattributes` による判定 (現行 `novelaid-editor` のみ実装)**
-   - ディレクトリ内の `.novelaidattributes` に `./` の設定があればそれを適用。
-   - または、親ディレクトリの `.novelaidattributes` に当該ディレクトリ名に対するマッピング（例: `dirName/`）があればそれを適用。
+2. **`.novelaidattributes` による判定**
+   - ディレクトリ内の `.novelaidattributes` に `./ <type>` の設定があればそれを適用（最優先）。
+   - または、親ディレクトリの `.novelaidattributes` に当該ディレクトリ名に対するマッピング（例: `dirName/ <type>`）があればそれを適用。
+   - 詳細は **[novelaidattributes 共通仕様](./novelaidattributes仕様.md)** を参照してください。
 
 3. **継承ルール** (共通)
    - フォルダ名から判定できない場合は、親フォルダのドキュメントタイプを再帰的に引き継ぎます。
@@ -214,7 +216,7 @@ sequenceDiagram
 `novelaid-editor-next` (Tauri版) への移行にあたり、Rust 側プラグイン `tauri-plugin-novelaid-fs` の実装においていくつか注意点があります。
 
 1. **`.novelaidattributes` の未実装**
-   現行の Rust プラグイン実装では、`.novelaidattributes` を利用した柔軟なドキュメント・ディレクトリタイプ判定ロジックが省略されています。拡張子とフォルダ名のキーワード判定のみとなっているため、将来的に旧エディタと同等の柔軟性を持たせるには、Rust 側での `.novelaidattributes` 解析ロジックの実装が必要です。
+   現行の Rust プラグイン実装（`novelaide` 等）では、`.novelaidattributes` を利用した柔軟なドキュメント・ディレクトリタイプ判定ロジックが省略されています。拡張子とフォルダ名のキーワード判定のみとなっているため、旧エディタと同等の柔軟性を持たせるには、Rust 側での `.novelaidattributes` 解析・キャッシュロジックの実装（詳細は **[novelaidattributes 共通仕様](./novelaidattributes仕様.md)** 準拠）が必要です。
 2. **`.novelaidignore` による無視処理の未実装**
    旧エディタでは `.novelaidignore` を読み込んで不要なファイルのスキャンをスキップする処理がありましたが、現在の Rust 側プラグインのディレクトリスキャンおよび非同期キュー登録時には、`.novelaidignore` による無視ファイルの判定ロジックが実装されていません。
 3. **メタデータクエリ API の未実装**
