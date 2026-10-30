@@ -1,13 +1,15 @@
 # 開発者向け仕様書一覧
 
-本ディレクトリでは、小説執筆用エディターシリーズ（`novelaid-editor`, `novelaid-editor-next`, `novelaide`, `novelaid-cli`）の共通理念、アーキテクチャ設計、および各機能の仕様書をまとめています。
+本ディレクトリでは、小説執筆用エディターシリーズ（`novelaid-editor`, `novelaide`, `novelaid-cli`）の共通理念、アーキテクチャ設計、および各機能の仕様書をまとめています。
 
 ---
 
-## 📖 設計理念
+## 📖 設計理念・機能一覧
 
 * **[小説執筆エディターシリーズ 共通設計理念](./00_小説執筆エディターシリーズ設計理念.md)**
   - なぜ小説専用エディターが必要なのか、シリーズ共通の5大コアバリュー、および歴代プロジェクトの変遷と新標準 `novelaide` の改善意図。
+* **[機能一覧および各アプリ対応状況](./機能一覧および各アプリ対応状況.md)**
+  - `novelaid-editor`（基準）、`novelaide`（先行開発・Tauri）、`novelaid-cli`（AI特化CLI）の3アプリにおける機能一覧と現在の対応状況マトリクス。
 
 ---
 
@@ -42,13 +44,11 @@
 graph TD
     Docs["novelaid-editor-docs (共通理念・共通仕様)"]
 
-    App1["novelaid-editor (現行・Electron版)"]
-    App2["novelaid-editor-next (Tauriプロトタイプ)"]
-    App3["novelaide (新世代・Tauri 2.x正式版)"]
+    App1["novelaid-editor (現行・Electron版 / 基準)"]
+    App2["novelaide (新世代・Tauri 2.x先行開発版)"]
     CLI["novelaid-cli (AIエージェント/CLI)"]
 
     Docs -->|"仕様準拠"| App1
-    Docs -->|"プロトタイプ"| App2
-    Docs -->|"構造改善・再実装"| App3
-    Docs -->|"ヘッドレス操作"| CLI
+    Docs -->|"構造改善・先行再実装"| App2
+    Docs -->|"ヘッドレス操作・AI支援"| CLI
 ```
