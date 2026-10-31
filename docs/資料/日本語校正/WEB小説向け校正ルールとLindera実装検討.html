@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>WEB小説向け校正ルールとLindera実装検討</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;800&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#f7f5f0; --surface:#fffdf9; --surface2:#efece4; --ink:#23211c; --ink2:#5c574c;
+    --line:#ddd6c6; --accent:#b3372a; --accent-soft:#f6e3df;
+    --blue:#2f4d6d; --blue-soft:#e2eaf1;
+    --ok:#3d7a4a; --warn:#a86a12; --info:#2f4d6d;
+    --chip:#efece4;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17181a; --surface:#1f2124; --surface2:#26282c; --ink:#ece8de; --ink2:#a9a294;
+      --line:#3a3c40; --accent:#e07a6a; --accent-soft:#3d2724;
+      --blue:#8fb2d4; --blue-soft:#24313f;
+      --ok:#7fc48d; --warn:#e0aa54; --info:#8fb2d4;
+      --chip:#26282c;
+      color-scheme: dark;
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;
+    line-height:1.85;font-size:15.5px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 20px 90px}
+  h1,h2,h3{font-family:"Noto Serif JP","Hiragino Mincho ProN",serif;line-height:1.45}
+  code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em}
+  a{color:var(--blue)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:56px 0 8px;border-bottom:3px double var(--line)}
+  .hero .date{color:var(--ink2);font-size:13px;letter-spacing:.08em}
+  .hero h1{font-size:clamp(27px,5.2vw,44px);font-weight:800;margin:12px 0 14px}
+  .hero h1 .red{color:var(--accent)}
+  .hero p.lead{font-size:16.5px;max-width:46em;margin:0 0 8px}
+  .verdict{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:30px 0 8px}
+  .verdict .v{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--accent);padding:16px 18px}
+  .verdict .v:nth-child(2){border-top-color:var(--blue)}
+  .verdict .v:nth-child(3){border-top-color:var(--ok)}
+  .verdict .v b{display:block;font-family:"Noto Serif JP",serif;font-size:17px;margin-bottom:6px}
+  .verdict .v p{margin:0;font-size:13.5px;color:var(--ink2);line-height:1.7}
+  @media(max-width:760px){.verdict{grid-template-columns:1fr}}
+
+  /* ---------- sections ---------- */
+  section{margin-top:64px}
+  .sec-head{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:20px}
+  .sec-head .no{font-family:"IBM Plex Mono",monospace;color:var(--accent);font-weight:600;font-size:15px}
+  .sec-head h2{font-size:clamp(21px,3.4vw,27px);margin:0;font-weight:800}
+  .sec-sub{color:var(--ink2);max-width:48em;margin:0 0 18px}
+  h3.sub{font-size:18px;margin:30px 0 10px}
+  p{margin:0 0 12px}
+  ul.tight{margin:0 0 14px;padding-left:1.3em}
+  ul.tight li{margin-bottom:5px}
+
+  /* conflict table -> cards on mobile */
+  .ctable{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);font-size:14px}
+  .ctable th,.ctable td{border-bottom:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}
+  .ctable th{background:var(--surface2);font-weight:700;white-space:nowrap}
+  .ctable tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:99px;white-space:nowrap}
+  .tag.ng{background:var(--accent-soft);color:var(--accent)}
+  .tag.mid{background:#f3e8cf;color:var(--warn)}
+  @media (prefers-color-scheme: dark){.tag.mid{background:#3a2f1a}}
+  .tag.ok{background:var(--blue-soft);color:var(--blue)}
+  @media(max-width:700px){
+    .ctable,.ctable tbody,.ctable tr,.ctable td{display:block;width:100%}
+    .ctable thead{display:none}
+    .ctable tr{border-bottom:2px solid var(--line);padding:8px 0}
+    .ctable td{border-bottom:none;padding:4px 12px}
+    .ctable td:first-child{font-weight:700}
+  }
+
+  /* ---------- catalog ---------- */
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+  .fbtn{border:1px solid var(--line);background:var(--surface);color:var(--ink);
+    padding:7px 14px;border-radius:99px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit}
+  .fbtn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .fbtn:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .filters .sep{width:100%;height:0}
+  .count-note{color:var(--ink2);font-size:13px;margin:6px 0 16px}
+  .cat-group{margin-bottom:26px}
+  .cat-group>h3{font-size:17px;margin:0 0 4px;display:flex;gap:10px;align-items:baseline}
+  .cat-group>h3 .en{font-family:"IBM Plex Mono",monospace;color:var(--accent);font-size:14px}
+  .cat-group>.desc{color:var(--ink2);font-size:13.5px;margin:0 0 12px}
+  .rule{background:var(--surface);border:1px solid var(--line);padding:13px 16px;margin-bottom:8px;
+    display:grid;grid-template-columns:1fr auto;gap:4px 14px}
+  .rule .name{font-weight:700;font-size:15px}
+  .rule .desc{grid-column:1/-1;color:var(--ink2);font-size:13.5px;line-height:1.7}
+  .rule .meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink2);border-top:1px dashed var(--line);padding-top:8px;margin-top:4px}
+  .rule .meta b{color:var(--ink);font-weight:500}
+  .nec{font-weight:700;font-size:14px;white-space:nowrap}
+  .nec.n-must{color:var(--accent)} .nec.n-rec{color:var(--blue)} .nec.n-opt{color:var(--warn)} .nec.n-no{color:var(--ink2)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--ink2);margin-bottom:16px}
+  .hidden{display:none !important}
+
+  /* ---------- demo ---------- */
+  .demo{background:var(--surface);border:1px solid var(--line);padding:20px}
+  .demo-text{font-family:"Noto Serif JP",serif;font-size:16.5px;line-height:2.1;background:var(--surface2);
+    padding:18px 20px;border:1px solid var(--line);white-space:pre-wrap}
+  .demo-text mark{background:transparent;color:inherit;padding:0 1px;border-radius:2px;cursor:pointer}
+  .demo-text mark.on-err{border-bottom:3px solid var(--accent);background:var(--accent-soft)}
+  .demo-text mark.on-warn{border-bottom:3px solid var(--warn);background:#f7ecd2}
+  @media (prefers-color-scheme: dark){.demo-text mark.on-warn{background:#3a2f1a}}
+  .demo-text mark.on-info{border-bottom:3px solid var(--blue);background:var(--blue-soft)}
+  .demo-text mark.sel{outline:2px solid var(--ink);outline-offset:1px}
+  .demo-ctrl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:16px 0}
+  .btn{background:var(--accent);color:#fff;border:none;padding:10px 20px;font-size:14.5px;font-weight:700;
+    cursor:pointer;font-family:inherit;border-radius:3px}
+  .btn.sub{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+  .switch{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;user-select:none}
+  .switch input{accent-color:var(--accent);width:17px;height:17px}
+  .diag-list{list-style:none;margin:14px 0 0;padding:0}
+  .diag-list li{border:1px solid var(--line);border-left:5px solid var(--blue);padding:10px 14px;margin-bottom:8px;font-size:13.5px;background:var(--surface);cursor:pointer}
+  .diag-list li.sev-error{border-left-color:var(--accent)}
+  .diag-list li.sev-warning{border-left-color:var(--warn)}
+  .diag-list li b{font-size:14px}
+  .diag-list li .why{color:var(--ink2);display:block;margin-top:2px;line-height:1.7}
+  .diag-list li.sel{outline:2px solid var(--ink);outline-offset:1px}
+  .sev{font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;color:#fff;vertical-align:2px;margin-right:6px}
+  .sev-error{background:var(--accent)} .sev-warning{background:var(--warn)} .sev-info{background:var(--blue)}
+  .scope-note{font-size:12px;color:var(--ink2)}
+
+  /* ---------- pipeline ---------- */
+  .pipe{display:flex;flex-wrap:wrap;gap:0;align-items:stretch;margin:18px 0}
+  .pstep{flex:1 1 130px;background:var(--surface);border:1px solid var(--line);padding:12px 13px;position:relative;min-width:128px}
+  .pstep b{display:block;font-size:13.5px;margin-bottom:3px}
+  .pstep span{font-size:12px;color:var(--ink2);line-height:1.55;display:block}
+  .pstep::after{content:"→";position:absolute;right:-13px;top:38%;z-index:2;color:var(--accent);font-weight:700;font-size:17px}
+  .pstep:last-child::after{content:""}
+  @media(max-width:700px){.pstep{flex:1 1 100%}.pstep::after{content:"↓";right:auto;left:20px;top:auto;bottom:-16px}}
+  .layers{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:16px 0}
+  .layer{border:1px solid var(--line);background:var(--surface);padding:16px 18px}
+  .layer h4{margin:0 0 6px;font-size:15px;font-family:"Noto Serif JP",serif}
+  .layer .lv{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--accent);font-weight:600}
+  .layer p{font-size:13px;color:var(--ink2);margin:0;line-height:1.7}
+  @media(max-width:760px){.layers{grid-template-columns:1fr}}
+
+  /* token demo */
+  .tok-row{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+  .tok{border:1px solid var(--line);background:var(--surface);padding:7px 10px;text-align:center;min-width:56px}
+  .tok .s{font-weight:700;font-size:15px;display:block}
+  .tok .d{font-size:11px;color:var(--ink2);display:block;line-height:1.5}
+  .tok.hl{border-color:var(--accent);background:var(--accent-soft)}
+  .tok.user{border-color:var(--ok);background:transparent;box-shadow:inset 0 0 0 1px var(--ok)}
+  pre.code{background:#22211d;color:#f0ead9;padding:16px 18px;overflow-x:auto;font-size:13px;line-height:1.75;border-radius:4px}
+  @media (prefers-color-scheme: dark){pre.code{background:#101012;border:1px solid var(--line)}}
+  pre.code .cm{color:#a49e8c}
+  .fig-note{font-size:12.5px;color:var(--ink2);margin-top:6px}
+
+  /* roadmap */
+  .road{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .phase{border:1px solid var(--line);background:var(--surface);padding:18px}
+  .phase .ph{font-family:"IBM Plex Mono",monospace;color:var(--accent);font-weight:600;font-size:12.5px}
+  .phase h4{font-family:"Noto Serif JP",serif;margin:4px 0 8px;font-size:16.5px}
+  .phase ul{margin:0;padding-left:1.2em;font-size:13.5px;color:var(--ink2)}
+  .phase li{margin-bottom:4px}
+  @media(max-width:760px){.road{grid-template-columns:1fr}}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.two{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);background:var(--surface);padding:18px 20px}
+  .panel h4{font-family:"Noto Serif JP",serif;margin:0 0 8px;font-size:16.5px}
+  .panel p,.panel li{font-size:13.5px;color:var(--ink2)}
+  .panel ul{margin:0;padding-left:1.2em}
+  .panel li{margin-bottom:4px}
+
+  .note-box{border:1px solid var(--warn);background:var(--surface);padding:14px 18px;font-size:13.5px;margin:16px 0}
+  .note-box b{color:var(--warn)}
+  footer{margin-top:70px;border-top:1px solid var(--line);padding-top:16px;color:var(--ink2);font-size:12.5px}
+  footer li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= HERO ================= -->
+  <header class="hero">
+    <div class="date">調査メモ ・ 2026-10-31 ・ 対象：カクヨム／小説家になろう等の連載形式、ライトノベル系WEB小説</div>
+    <h1>WEB小説向け校正ルールと<br /><span class="red">Lindera</span>による実装検討</h1>
+    <p class="lead">textlint の技術文書向けプリセットは、小説にそのまま当てると誤検出が多発する。必要なのはプリセットの流用ではなく、<strong>WEB小説の作法に合わせたルールの選別と強さの再設計</strong>だ。本稿ではルールを5分類して必要度を付け、textlint での対応と、Lindera（形態素解析）で自前実装する場合の処理方式を対応づける。</p>
+    <div class="verdict">
+      <div class="v"><b>結論1 ― 選別が先、実装は後</b><p>効くルールの大半は「体裁・タイプミス」と「表記ゆれ」。文法系は会話文を除外するスコープ制御とセットで初めて実用になる。</p></div>
+      <div class="v"><b>結論2 ― 実装は3層に分ける</b><p>正規表現で済む層、辞書マッチの層、Lindera のトークン列パターンが要る層。形態素解析は第3層だけでよく、全ルールを Lindera に寄せない。</p></div>
+      <div class="v"><b>結論3 ― 辞書が共通資産になる</b><p>Lindera のユーザー辞書CSV（分割・読み用）と prh 形式の表記統一辞書は役割が別で、両方要る。この2つを novelaid-editor／novelaide で共有するのが共通化の軸。</p></div>
+    </div>
+  </header>
+
+  <!-- ================= 0. 前提 ================= -->
+  <section id="premise">
+    <div class="sec-head"><span class="no">00</span><h2>前提：技術文書向けプリセットはそのまま使えない</h2></div>
+    <p class="sec-sub">textlint の代表プリセット <code>preset-ja-technical-writing</code> は技術文書向けに調整されている。小説との代表的な衝突と、本稿での扱いを先に固定する。</p>
+    <table class="ctable">
+      <thead><tr><th style="width:24%">プリセットの既定</th><th style="width:38%">小説での実態</th><th style="width:14%">扱い</th><th>本稿の方針</th></tr></thead>
+      <tbody>
+        <tr><td>一文の長さ上限（100字）</td><td>小説では長文も普通に使う</td><td><span class="tag mid">大幅緩和</span></td><td>エラーにせず、目安表示（情報レベル）に留める</td></tr>
+        <tr><td>読点は1文に3つまで</td><td>地の文では普通に超える</td><td><span class="tag ng">無効化〜緩和</span></td><td>既定オフ。気になる作品だけ上限を大きく取って有効化</td></tr>
+        <tr><td>！？の使用禁止</td><td>WEB小説では通常の表現</td><td><span class="tag ok">反転させる</span></td><td>禁止ではなく「直後に全角スペース」等の使い方の作法チェックにする</td></tr>
+        <tr><td>ですます／であるの文体統一</td><td>地の文には有効だが、会話文はキャラの口調</td><td><span class="tag ok">範囲を限定</span></td><td>地の文のみに適用し、会話文は適用外</td></tr>
+        <tr><td>弱い表現・冗長表現の検出</td><td>あえて使う表現も多い</td><td><span class="tag mid">格下げ</span></td><td>既定では無効〜情報レベル。書き手が意図を確認する材料に留める</td></tr>
+      </tbody>
+    </table>
+    <div class="legend" style="margin-top:18px">
+      <span>必要度の凡例：</span>
+      <span><span class="nec n-must">◎</span> ほぼ必須</span>
+      <span><span class="nec n-rec">○</span> あると助かる</span>
+      <span><span class="nec n-opt">△</span> 作品の方針次第</span>
+      <span><span class="nec n-no">×</span> 小説では無効化推奨</span>
+    </div>
+  </section>
+
+  <!-- ================= 1. カタログ ================= -->
+  <section id="catalog">
+    <div class="sec-head"><span class="no">01</span><h2>ルールカタログ</h2></div>
+    <p class="sec-sub">分類ボタンと必要度ボタンで絞り込める。各ルールには「textlint での対応」と「Lindera 実装での方式」を併記した。方式は <strong>文字列</strong>（正規表現・段落処理）／<strong>辞書</strong>（prh形式などのマッチ）／<strong>トークン</strong>（Lindera の形態素列パターン）／<strong>集計</strong>（文書全体の統計）の4種。</p>
+    <div class="filters" id="catFilters" role="group" aria-label="分類で絞り込み">
+      <button class="fbtn" data-cat="all" aria-pressed="true">すべて</button>
+      <button class="fbtn" data-cat="A" aria-pressed="false">A 体裁・タイプミス</button>
+      <button class="fbtn" data-cat="B" aria-pressed="false">B 表記ゆれ・統一</button>
+      <button class="fbtn" data-cat="C" aria-pressed="false">C 文法（形態素）</button>
+      <button class="fbtn" data-cat="D" aria-pressed="false">D 文体・読みやすさ</button>
+      <button class="fbtn" data-cat="E" aria-pressed="false">E 小説固有</button>
+      <span class="sep"></span>
+      <button class="fbtn" data-nec="all" aria-pressed="true">必要度：すべて</button>
+      <button class="fbtn" data-nec="must" aria-pressed="false">◎ ほぼ必須のみ</button>
+      <button class="fbtn" data-nec="rec" aria-pressed="false">○ 以上</button>
+    </div>
+    <p class="count-note" id="catCount"></p>
+    <div id="catalogBody"></div>
+  </section>
+
+  <!-- ================= 2. デモ ================= -->
+  <section id="demo">
+    <div class="sec-head"><span class="no">02</span><h2>検出イメージ：サンプル文で見る</h2></div>
+    <p class="sec-sub">短いサンプル原稿に、想定ルールを適用した結果の概念図。「校正を実行」で下線と診断が表示され、下線や診断をタップすると互いに対応する箇所が強調される。「会話文も文法チェックの対象にする」を切り替えると、会話文中のら抜き言葉への警告が消える――これがスコープ制御の効きどころ。</p>
+    <div class="demo">
+      <div class="demo-text" id="demoText"></div>
+      <div class="demo-ctrl">
+        <button class="btn" id="runBtn">校正を実行</button>
+        <button class="btn sub" id="clearBtn">クリア</button>
+        <label class="switch"><input type="checkbox" id="scopeToggle" aria-label="会話文も文法チェックの対象にする" /> 会話文も文法チェックの対象にする</label>
+      </div>
+      <p class="scope-note" id="diagSummary">まだ実行していません。</p>
+      <ul class="diag-list" id="diagList"></ul>
+    </div>
+    <p class="fig-note">※ 検出位置と内容は本稿のルール設計に基づく概念図で、実際のエンジンの出力ではない。</p>
+  </section>
+
+  <!-- ================= 3. Lindera 実装 ================= -->
+  <section id="lindera">
+    <div class="sec-head"><span class="no">03</span><h2>Lindera でどう処理するか</h2></div>
+    <p class="sec-sub">校正エンジンの全体像は「前処理で範囲を決め、層ごとに判定し、診断として集約する」パイプラインになる。Lindera が担うのは形態素解析と、その結果（トークン列）へのパターンマッチだけに絞るのが要点。</p>
+
+    <h3 class="sub">処理パイプライン</h3>
+    <div class="pipe">
+      <div class="pstep"><b>1. 段落・文分割</b><span>段落単位に分け、「。！？」で文に切る</span></div>
+      <div class="pstep"><b>2. スコープ判定</b><span>「」『』内を会話文、それ以外を地の文として範囲タグ付け</span></div>
+      <div class="pstep"><b>3. 文字列層</b><span>正規表現ルール（A分類）を原文に直接適用</span></div>
+      <div class="pstep"><b>4. 形態素解析</b><span>文ごとに Lindera で解析し、トークン列＋ユーザー辞書を適用</span></div>
+      <div class="pstep"><b>5. 辞書・トークン層</b><span>辞書マッチ（B）とトークン列パターン（C・D）を判定</span></div>
+      <div class="pstep"><b>6. 診断の集約</b><span>位置・重要度・適用範囲つきでエディターへ返す</span></div>
+    </div>
+
+    <h3 class="sub">3層モデル：ルールを重さで仕分ける</h3>
+    <div class="layers">
+      <div class="layer"><span class="lv">LAYER 1</span><h4>文字列層 ― 正規表現</h4><p>括弧対応、字下げ、三点リーダーの偶数個、記号の重複など。形態素解析なしで検出でき、誤検出が少なく効果が確実。まずここから実装する。対象は主にA分類。</p></div>
+      <div class="layer"><span class="lv">LAYER 2</span><h4>辞書層 ― prh形式マッチ</h4><p>固有名詞の統一、漢字の開き／閉じポリシー、誤用語など「語の対応表」で書けるもの。prh.yml 互換の辞書データにすれば textlint 側と資産を共有できる。対象は主にB分類。</p></div>
+      <div class="layer"><span class="lv">LAYER 3</span><h4>トークン層 ― Lindera</h4><p>ら抜き、助詞の連続、文体判定など、品詞・原形・活用情報が要るもの。Lindera のトークン列に対するパターン定義としてルールを書く。対象は主にC・D分類。</p></div>
+    </div>
+
+    <h3 class="sub">トークンから何が取れるか</h3>
+    <p>IPADIC 系辞書では、各トークンの <code>details</code> に「品詞、品詞細分類1〜3、活用型、活用形、原形、読み、発音」が並ぶ（MeCab の素性順）。校正で主に使うのは<strong>品詞・活用型・活用形・原形・読み</strong>の5つ。ユーザー辞書に登録した語は1トークンとして返り、登録した読みがそのまま付く。</p>
+    <div class="demo-ctrl" style="margin-top:14px">
+      <label class="switch"><input type="checkbox" id="udToggle" aria-label="ユーザー辞書を使う" /> ユーザー辞書を使う（「天霧澪＝あまぎり・みお」を登録）</label>
+    </div>
+    <p style="font-family:'Noto Serif JP',serif;font-size:16px;margin-bottom:4px">「天霧澪は剣を取った。」の解析イメージ</p>
+    <div class="tok-row" id="tokRow"></div>
+    <p class="fig-note" id="tokNote"></p>
+
+    <h3 class="sub">ルールの書き方：トークン列パターンの例</h3>
+    <p>ら抜き言葉は「一段・カ変動詞の未然形相当＋助動詞『れる』」というトークン列のパターンで表せる。会話文スコープを外す設定と組み合わせることで、地の文だけに警告を出す指定が可能になる。</p>
+    <pre class="code"><span class="cm">// 概念コード：ら抜き検出（地の文スコープのみ）</span>
+for sentence in sentences where sentence.scope == Narration {
+    for (a, b) in tokens.windows(2) {
+        if a.pos == "動詞" &amp;&amp; a.conjugation_type in ["一段", "カ変・來ル"]
+           &amp;&amp; b.surface == "れる" &amp;&amp; b.pos == "助動詞" {
+            report(Warning, range_of(a, b),
+                   "ら抜き言葉の可能性があります（地の文）");
+        }
+    }
+}</pre>
+    <ul class="tight">
+      <li><strong>助詞の連続</strong>：トークン列で助詞「の」が短い間隔に3回以上、等のカウント判定。</li>
+      <li><strong>助詞の重なりミス</strong>：同一助詞トークンの完全連続（「にはには」）を検出。タイプミス的なので重要度は高くてよい。</li>
+      <li><strong>送り仮名のゆれ</strong>：原形が同じ動詞を文書全体で集計し、表層の送り仮名が複数形に割れていたら提示する（集計型）。</li>
+      <li><strong>文体統一</strong>：文末トークン（です／ます／だ／である）を文ごとに判定し、地の文の多数派と違う文を挙げる（集計型）。</li>
+    </ul>
+
+    <h3 class="sub">辞書は2種類、役割を分ける</h3>
+    <div class="two">
+      <div class="panel"><h4>Lindera ユーザー辞書CSV ― 「どう切るか・どう読むか」</h4>
+        <p>形式は <code>表層形,品詞,読み</code> の3列。登場人物名や固有の技名を登録すると、1トークンとして切れ、読みが付く。効く先は形態素解析の精度そのものと、ルビ自動付与。読み込み直せば再起動なしで反映される。</p>
+        <pre class="code" style="margin-top:10px">天霧澪,固有名詞,アマギリミオ
+星屑の剣,固有名詞,ホシクズノツルギ</pre>
+      </div>
+      <div class="panel"><h4>prh形式の表記辞書 ― 「どう書くべきか」</h4>
+        <p>「ゆれ候補 → 正規表記」の対応表。固有名詞の表記統一、漢字の開き／閉じ、一人称の統一などに使う。textlint の <code>textlint-rule-prh</code> と同じ <code>prh.yml</code> データを両エディターで読み合える形にしておくと、辞書育成が片方に偏らない。</p>
+        <pre class="code" style="margin-top:10px"><span class="cm"># prh.yml のイメージ</span>
+- expected: 天霧澪
+  patterns: [天霧みお, あまぎり澪]
+- expected: できる
+  patterns: [出来る]</pre>
+      </div>
+    </div>
+    <div class="note-box"><b>注意：</b>ユーザー辞書CSV は「分割と読み」のため、表記ゆれの検出そのものは行わない。逆に prh 辞書は表記を直す先を示すが、解析の切り方は変えない。混同して片方だけで済ませようとすると、固有名詞が途中で割れて検出漏れが出る。</div>
+
+    <h3 class="sub">適用範囲（スコープ）と重要度の設計</h3>
+    <table class="ctable">
+      <thead><tr><th style="width:22%">設計軸</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr><td>スコープ</td><td>ルールごとに「地の文のみ／会話文のみ／両方」を設定可能にする。判定は「」『』の範囲で機械的に行い、括弧が閉じていない箇所はスコープ不明として文法系を適用しない</td></tr>
+        <tr><td>重要度</td><td>エラーの3段階。エラー＝体裁・タイプミス系（Aの◎）、警告＝文法系・表記ゆれ、情報＝読みやすさの目安（一文の長さ等）。小説では「情報」を増やし「エラー」を絞るのが既定方針</td></tr>
+        <tr><td>部分再解析</td><td>編集中は変更のあった段落だけを再解析し、診断を差し替える。文書全体の集計型ルール（送り仮名・文末の連続など）は保存時や手動実行に回す</td></tr>
+        <tr><td>例外の登録</td><td>「この表現は意図的」を作品単位で例外登録できること。誤検出を消せない校正は、結局オフにされる</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================= 4. 構成とロードマップ ================= -->
+  <section id="plan">
+    <div class="sec-head"><span class="no">04</span><h2>2つのエディターでの構成と実装順</h2></div>
+    <div class="two">
+      <div class="panel"><h4>novelaid-editor（Electron／textlint継続）</h4>
+        <ul>
+          <li><code>textlint-rule-general-novel-style-ja</code> を体裁チェックの中心にする</li>
+          <li><code>preset-ja-technical-writing</code> は丸ごとではなく、ら抜き・助詞連続など文法系だけを抜き、文長・読点・！？禁止は切る／緩める</li>
+          <li>固有名詞・ポリシーは <code>prh</code> に寄せ、辞書を作品ごとに育てる</li>
+          <li>文体統一などは地の文前提の設定に寄せる（textlint 側で会話文の除外が難しいルールは情報レベルに落とす）</li>
+        </ul>
+      </div>
+      <div class="panel"><h4>novelaide（Tauri／Lindera自前実装）</h4>
+        <ul>
+          <li>文字列層→辞書層→トークン層の順に段階実装する（下のフェーズ表）</li>
+          <li>辞書層は novelaid-editor と同じ prh.yml を読める形式にし、辞書とルール設定ファイルを共通資産化する</li>
+          <li>ユーザー辞書CSV はルビ付与と共用し、登録UIを「登場人物辞書」として一本化する</li>
+          <li>スコープ制御（会話文の除外）は最初から土台に入れる。後付けはルール全書き換しになる</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="sub">実装フェーズ</h3>
+    <div class="road">
+      <div class="phase"><span class="ph">PHASE 1</span><h4>体裁と辞書（MVP）</h4>
+        <ul><li>文字列層：字下げ、括弧対応、三点リーダー、！？後スペース、記号重複</li><li>辞書層：prh形式の表記統一（一人称・固有名詞）</li><li>スコープ判定の土台だけ先に入れる</li></ul></div>
+      <div class="phase"><span class="ph">PHASE 2</span><h4>文法系（Lindera本番）</h4>
+        <ul><li>Lindera 統合とユーザー辞書CSV の読み込み</li><li>ら抜き、助詞の連続・重なり、誤用辞書マッチ</li><li>地の文／会話文の適用範囲をルール設定に出す</li></ul></div>
+      <div class="phase"><span class="ph">PHASE 3</span><h4>読みやすさと集計</h4>
+        <ul><li>文体統一、文末表現の連続、一文の長さ（情報レベル）</li><li>送り仮名ゆれ等の文書全体の集計レポート</li><li>例外登録と、作品別ルールプロファイルの切り替え</li></ul></div>
+    </div>
+
+    <div class="note-box"><b>未確認・要検討：</b>① 会話文の判定は「」の対応に依存するため、地の文中の短い引用や『』の入れ子での境界精度は実装時にサンプル原稿で検証が要る。② Lindera の <code>details</code> の並び順は辞書（IPADIC／UniDic）で異なるため、参照位置は辞書ごとに固定せず名前引きできる層を挟むのが安全。③ <code>textlint-rule-general-novel-style-ja</code> は最終更新が古く（npm 公開は約9年前の版が最新と表示される）、現行 textlint との組み合わせ検証は導入時に必要。</div>
+  </section>
+
+  <footer>
+    <p>出典・土台資料</p>
+    <ul>
+      <li>調査レポート「WEB小説向け校正ルールと Lindera による実装検討」（2026-10-31、先行調査「日本語校正・チェックライブラリ調査」「日本語形態素解析ライブラリ調査」を土台とする）</li>
+      <li><a href="https://github.com/io-monad/textlint-rule-general-novel-style-ja">textlint-rule-general-novel-style-ja（GitHub）</a> ― 小説作法ルールの内訳確認</li>
+      <li><a href="https://github.com/textlint/textlint/wiki/Collection-of-textlint-rule">textlint ルールコレクション（GitHub Wiki）</a></li>
+      <li><a href="https://lindera.github.io/lindera/ja/">Lindera ドキュメント</a> ／ <a href="https://lib.rs/crates/lindera-ipadic">lindera-ipadic（lib.rs）</a> ― トークンの details 構成とユーザー辞書CSV形式の確認</li>
+      <li><a href="https://note.kiriukun.com/entry/textlintr-for-writing-web-novels">Web小説向け textlint 設定の実例（note）</a> ― 実運用でのルール選別の参考</li>
+    </ul>
+    <p>本ページのデモ（検出結果・形態素解析）は、いずれも設計に基づく概念図であり、実エンジンの出力ではない。</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ 1. カタログ ============ */
+  var GROUPS = {
+    A:{title:"体裁・タイプミス系", desc:"形態素解析なしでも検出できる層。誤検出が少なく、効果が確実なので最優先。"},
+    B:{title:"表記ゆれ・表記の統一", desc:"連載が長くなるほど効く層。固有名詞のゆれは読者が最も気づく誤りでもある。"},
+    C:{title:"文法系（形態素パターンで検出する層）", desc:"Lindera の品詞・原形情報が本領を発揮する層。textlint の日本語ルール群の中心もここ。"},
+    D:{title:"文体・読みやすさ系", desc:"技術文書向けの強さのままでは小説と衝突する層。範囲と重要度を下げて使う。"},
+    E:{title:"小説固有・WEB小説系", desc:"スコープ制御や設定用語の整合など、小説エディターならではの基盤と補助機能。"}
+  };
+  // nec: must ◎ / rec ○ / opt △ / no ×
+  var RULES = [
+    /* A */
+    {g:"A",name:"括弧の対応",nec:"must",desc:"「」『』（）の開閉不一致、閉じ忘れを検出する。",tl:"汎用ルール／自作が容易",impl:"文字列",scope:"両方"},
+    {g:"A",name:"字下げ",nec:"must",desc:"段落冒頭の全角スペース（WEB小説の標準作法）。会話文の「 から始まる段落は字下げしない慣習との整合も含む。",tl:"textlint-rule-general-novel-style-ja",impl:"文字列",scope:"段落単位"},
+    {g:"A",name:"閉じ括弧前の句読点",nec:"must",desc:"「〜だ。」のように閉じ括弧直前の「。」を付けない作法のチェック。",tl:"textlint-rule-general-novel-style-ja",impl:"文字列",scope:"両方"},
+    {g:"A",name:"！？の後のスペース",nec:"must",desc:"感嘆符・疑問符の直後は全角スペースを空ける（WEB小説の慣習。文末の場合は空けない）。",tl:"textlint-rule-general-novel-style-ja",impl:"文字列",scope:"両方"},
+    {g:"A",name:"三点リーダー／ダッシュ",nec:"must",desc:"「…」は2つ組「……」、「―」は2つ組「――」で使う。奇数個を検出する。中黒「・・・」での代用も不可とする運用が多い。",tl:"textlint-rule-general-novel-style-ja",impl:"文字列",scope:"両方"},
+    {g:"A",name:"同一文字・記号の重複ミス",nec:"must",desc:"「、、」「。。」や促音の打ち間違いなど、連続した句読点・長音符の検出。",tl:"自作（正規表現）／general-novel-style-ja にも一部含む",impl:"文字列",scope:"両方"},
+    {g:"A",name:"英数字の表記統一",nec:"rec",desc:"全角／半角の混在。作品内で方針を決めて統一する。WEB小説では桁数制限は切る運用が一般的。",tl:"preset-jtf-style 系／no-mixed-zenkaku-and-hankaku-alphabet",impl:"文字列",scope:"両方"},
+    {g:"A",name:"数字の表記方針",nec:"opt",desc:"漢数字／算用数字の混在チェック。方針は作品設定に依存する。",tl:"prh 併用",impl:"辞書",scope:"両方"},
+    {g:"A",name:"行頭・行末の不要スペース",nec:"rec",desc:"全角スペースの過不足、文中の半角スペース混入の検出。",tl:"自作（正規表現）／ja-no-space-between-full-width",impl:"文字列",scope:"両方"},
+    {g:"A",name:"場面転換記号の統一",nec:"opt",desc:"空行や「＊」等の区切りの使い方のばらつきを揃える。",tl:"自作（パターン）",impl:"文字列",scope:"文書全体"},
+    /* B */
+    {g:"B",name:"固有名詞・用語の統一",nec:"must",desc:"登場人物名、地名、技名などの表記を登録語に統一する。ゆれ候補を検出して正規表記を提示する。",tl:"textlint-rule-prh（prh.yml 辞書）",impl:"辞書",scope:"両方"},
+    {g:"B",name:"同義語・言い換えのゆれ",nec:"rec",desc:"「行う／おこなう」「様々／さまざま」など同語の表記ゆれ、異体字の混在。",tl:"textlint-rule-no-synonyms、ja-no-orthographic-variants",impl:"辞書＋トークン",scope:"両方"},
+    {g:"B",name:"漢字／ひらがな表記ポリシー",nec:"rec",desc:"「出来る→できる」「有難う→ありがとう」など、開く／閉じるの方針統一。技術文書式の全面適用は小説の語感を壊すので、プロジェクトごとのポリシー表で管理する。",tl:"prh（自作ポリシー表）",impl:"辞書",scope:"地の文中心"},
+    {g:"B",name:"送り仮名のゆれ",nec:"rec",desc:"「行なう／行う」等の同一動詞の送り仮名の不統一。原形で集計して割れを提示する。",tl:"prh＋原形ベース集計",impl:"トークン＋集計",scope:"文書全体"},
+    {g:"B",name:"カタカナ語の長音",nec:"opt",desc:"「サーバー／サーバ」など語尾長音の統一。",tl:"preset-jtf-style 系／prh",impl:"辞書",scope:"両方"},
+    {g:"B",name:"一人称・二人称の統一",nec:"rec",desc:"地の文の一人称（俺／僕／私）の混在検出。視点人物が決まっている作品では事故率が高い。",tl:"自作（辞書マッチ）",impl:"辞書",scope:"地の文のみ"},
+    /* C */
+    {g:"C",name:"ら抜き言葉",nec:"rec",desc:"「見れる／食べれる」。会話文や一人称の口語では自然な場合もあるため、地の文のみ警告などの範囲設定が要る。",tl:"preset-ja-technical-writing（no-dropping-the-ra 系）",impl:"トークン",scope:"地の文のみ（既定）"},
+    {g:"C",name:"二重否定・否定のねじれ",nec:"opt",desc:"「ないこともない」等の意図せぬ二重否定、否定の呼応ミス。意図的な表現も多いので情報〜警告レベル。",tl:"preset-ja-technical-writing",impl:"トークン",scope:"地の文中心"},
+    {g:"C",name:"同じ助詞の連続",nec:"rec",desc:"「の」の連鎖（「〜の〜の〜の」）、「は」の連続など読みにくさの検出。段落単位の連続も対象にできる。",tl:"preset-ja-technical-writing（助詞連続系）、preset-japanese、no-doubled-joshi",impl:"トークン",scope:"両方"},
+    {g:"C",name:"助詞の重なりミス",nec:"must",desc:"「にはには」のようなタイプミス的連続。意図的な用法がほぼないため、強めに出してよい。",tl:"トークンパターンで自作可",impl:"トークン",scope:"両方"},
+    {g:"C",name:"誤用・慣用句の誤り",nec:"rec",desc:"「的を得る（→的を射る）」のような慣用句の誤用、言葉の取り違え。辞書の育成が精度に直結する。",tl:"textlint-rule-ja-no-abusage",impl:"辞書＋トークン",scope:"両方"},
+    {g:"C",name:"冗長な表現",nec:"opt",desc:"「〜することができる」「操作を行う」型の冗長表現。小説ではあえての言い回しもあるため情報レベルが既定。",tl:"textlint-rule-ja-no-redundant-expression",impl:"トークン",scope:"地の文中心"},
+    {g:"C",name:"「たり」の並列漏れ",nec:"opt",desc:"「〜したり、〜する」のように並列の片側だけ「たり」になる形の検出。",tl:"textlint-rule-prefer-tari-tari",impl:"トークン",scope:"両方"},
+    {g:"C",name:"係り受け・主述のねじれ",nec:"opt",desc:"主語と述語の対応ずれ。形態素解析だけでは判定が限定的で、誤検出も出やすい。参考表示に留めるのが現実的（要検証）。",tl:"汎用ルールなし（自作は限定的）",impl:"トークン（限定的）",scope:"地の文のみ"},
+    /* D */
+    {g:"D",name:"文体の統一（地の文）",nec:"must",desc:"地の文の「ですます／である」の混在検出。会話文はキャラクターの口調なので適用外にするのが前提。",tl:"preset-ja-technical-writing（文体系）",impl:"トークン＋集計",scope:"地の文のみ"},
+    {g:"D",name:"一文の長さ",nec:"rec",desc:"技術文書の上限（100字）をそのまま使わず、大幅に緩めて目安表示に留める。",tl:"preset-ja-technical-writing（max-comma／文長系を調整）",impl:"文字列（文単位）",scope:"地の文中心"},
+    {g:"D",name:"読点の数",nec:"opt",desc:"「1文に3つまで」は小説では普通に超える。無効化か、大幅緩和した上限でのみ使う。",tl:"textlint-rule-max-ten（max を緩和）",impl:"文字列（文単位）",scope:"地の文中心"},
+    {g:"D",name:"同じ接続詞の連続",nec:"rec",desc:"段落内で同じ接続詞が繰り返される検出。文頭の単調さに気づける。",tl:"textlint-rule-no-doubled-conjunction",impl:"トークン",scope:"地の文中心"},
+    {g:"D",name:"同じ文末表現の連続",nec:"rec",desc:"「〜した。〜した。〜した。」のような文末の単調な連続。文末トークンの集計で検出できる。",tl:"自作（文末パターン集計）",impl:"トークン＋集計",scope:"地の文のみ"},
+    {g:"D",name:"弱い表現の検出",nec:"opt",desc:"「〜と思う」「〜かもしれない」等の弱い表現。小説ではあえて使うことも多く、既定は無効〜情報レベル。",tl:"preset-ja-technical-writing",impl:"トークン",scope:"地の文のみ"},
+    /* E */
+    {g:"E",name:"会話文／地の文のスコープ制御",nec:"must",desc:"「」『』内を会話文として切り分け、ルールごとに適用範囲を変える基盤機能。これがないと文法系・文体系が実用にならない。",tl:"textlint では限定的（フィルタ自作）",impl:"文字列（前処理）",scope:"基盤"},
+    {g:"E",name:"設定用語・伏線語の表記整合",nec:"must",desc:"固有名詞の統一（B）を作品設定資料と結びつけ、表記ゆれ＝設定ミスの芽として拾う。prh辞書をそのまま用語集として育てる運用。",tl:"textlint-rule-prh（辞書拡張）",impl:"辞書",scope:"両方"},
+    {g:"E",name:"キャラクター口調の一貫性",nec:"opt",desc:"キャラごとの一人称・語尾の登録表と照合し、会話文の口調の混在を提示する。話者判定までは自動化せず、辞書マッチの補助に留める。",tl:"自作（辞書マッチ）",impl:"辞書",scope:"会話文のみ"},
+    {g:"E",name:"ルビ対象語の読み登録との連携",nec:"rec",desc:"Lindera ユーザー辞書に登録した読みを、校正（固有名詞の同定）とルビ自動付与で共用する。辞書登録を一度で済ませる設計。",tl:"―（エディター側の連携機能）",impl:"辞書（Lindera連携）",scope:"基盤"}
+  ];
+  var NEC_LABEL = {must:"◎",rec:"○",opt:"△",no:"×"};
+  var NEC_CLASS = {must:"n-must",rec:"n-rec",opt:"n-opt",no:"n-no"};
+  var NEC_RANK = {must:3,rec:2,opt:1,no:0};
+  var catFilter="all", necFilter="all";
+
+  function renderCatalog(){
+    var body=document.getElementById("catalogBody");
+    body.innerHTML="";
+    var shown=0;
+    ["A","B","C","D","E"].forEach(function(g){
+      if(catFilter!=="all" && catFilter!==g) return;
+      var items=RULES.filter(function(r){
+        if(r.g!==g) return false;
+        if(necFilter==="must" && r.nec!=="must") return false;
+        if(necFilter==="rec" && NEC_RANK[r.nec]<2) return false;
+        return true;
+      });
+      if(!items.length) return;
+      var grp=document.createElement("div"); grp.className="cat-group";
+      var h=document.createElement("h3");
+      h.innerHTML='<span class="en">'+g+'</span>'+GROUPS[g].title;
+      var d=document.createElement("p"); d.className="desc"; d.textContent=GROUPS[g].desc;
+      grp.appendChild(h); grp.appendChild(d);
+      items.forEach(function(r){
+        shown++;
+        var el=document.createElement("article"); el.className="rule";
+        el.innerHTML='<span class="name"></span><span class="nec '+NEC_CLASS[r.nec]+'">'+NEC_LABEL[r.nec]+'</span>'+
+          '<p class="desc" style="margin:0"></p>'+
+          '<div class="meta"><span>textlint：<b class="tl"></b></span><span>実装方式：<b class="im"></b></span><span>適用範囲：<b class="sc"></b></span></div>';
+        el.querySelector(".name").textContent=r.name;
+        el.querySelector(".desc").textContent=r.desc;
+        el.querySelector(".tl").textContent=r.tl;
+        el.querySelector(".im").textContent=r.impl;
+        el.querySelector(".sc").textContent=r.scope;
+        grp.appendChild(el);
+      });
+      body.appendChild(grp);
+    });
+    document.getElementById("catCount").textContent = shown+" 件のルールを表示中（全 "+RULES.length+" 件）";
+  }
+  document.getElementById("catFilters").addEventListener("click",function(e){
+    var b=e.target.closest("button"); if(!b) return;
+    if(b.dataset.cat!==undefined){
+      catFilter=b.dataset.cat;
+      this.querySelectorAll("[data-cat]").forEach(function(x){x.setAttribute("aria-pressed", x===b?"true":"false");});
+    }else{
+      necFilter=b.dataset.nec;
+      this.querySelectorAll("[data-nec]").forEach(function(x){x.setAttribute("aria-pressed", x===b?"true":"false");});
+    }
+    renderCatalog();
+  });
+  renderCatalog();
+
+  /* ============ 2. 校正デモ ============ */
+  var SEGMENTS = [
+    {t:"　放課後の教室。澪は窓の外の雲を見つめていた。", d:null},
+    {t:"「あの雲、なんか", d:null},
+    {t:"…", d:{id:"leader",sev:"error",rule:"三点リーダーは2つ組",why:"三点リーダー「…」は「……」と偶数個で使うのがWEB小説の作法。奇数個はエラーにする。",scope:"both"}},
+    {t:"変な形だね」", d:null},
+    {t:"　隣の席の蒼太が、笑いながら言った。", d:null},
+    {t:"「大丈夫。すぐに", d:null},
+    {t:"見れる", d:{id:"ranuki",sev:"warning",rule:"ら抜き言葉（会話文）",why:"「見れる」はら抜き言葉。ただし会話文はキャラクターの口調なので、既定では地の文のみ警告し、会話文は対象外にできる（トグルで切替）。",scope:"dialogue"}},
+    {t:"ようになるよ」", d:null},
+    {t:"　しかし澪には、まだその扉が", d:null},
+    {t:"見れる", d:{id:"ranuki2",sev:"warning",rule:"ら抜き言葉（地の文）",why:"同じ「見れる」でも、こちらは地の文なので警告対象。スコープ判定が効いている例。",scope:"narration"}},
+    {t:"はずもなかった", d:null},
+    {t:"。。", d:{id:"dup",sev:"error",rule:"句読点の重複",why:"「。。」はタイプミス的な重複。意図的な用法がほぼないため、エラーとして強く出す。",scope:"both"}},
+    {t:"　彼女の制服のポケットには、星屑の剣の欠片が入っていた。けれど彼は未だに、それに気づいていなかった。", d:null},
+    {t:"「星屑の剣", d:{id:"prh",sev:"warning",rule:"固有名詞の表記ゆれ（prh辞書）",why:"作中では「星屑の剣」が正規表記として辞書登録済み。「星屑」はゆれ候補として検出し、正規表記を提示する。",scope:"both"}},
+    {t:"？　あれがそうなの！」", d:null},
+    {t:"　二人の視線の先で、雲がゆっくりと形を変えていった。", d:null}
+  ];
+  var demoText=document.getElementById("demoText");
+  var diagList=document.getElementById("diagList");
+  var diagSummary=document.getElementById("diagSummary");
+  var ran=false, selectedId=null;
+
+  function buildDemoText(){
+    demoText.innerHTML="";
+    SEGMENTS.forEach(function(s){
+      if(s.d){
+        var m=document.createElement("mark");
+        m.textContent=s.t; m.dataset.id=s.d.id;
+        m.addEventListener("click",function(){ if(ran) selectDiag(s.d.id,true); });
+        demoText.appendChild(m);
+      }else{
+        demoText.appendChild(document.createTextNode(s.t));
+      }
+    });
+  }
+  function activeDiags(){
+    var includeDialogue=document.getElementById("scopeToggle").checked;
+    var seen={}, out=[];
+    SEGMENTS.forEach(function(s){
+      if(!s.d || seen[s.d.id]) return;
+      if(s.d.scope==="dialogue" && !includeDialogue) return;
+      seen[s.d.id]=true; out.push(s.d);
+    });
+    return out;
+  }
+  function selectDiag(id,scroll){
+    selectedId=id;
+    demoText.querySelectorAll("mark").forEach(function(m){
+      m.classList.toggle("sel", m.dataset.id===id);
+    });
+    diagList.querySelectorAll("li").forEach(function(li){
+      li.classList.toggle("sel", li.dataset.id===id);
+    });
+    if(scroll){
+      var li=diagList.querySelector('li[data-id="'+id+'"]');
+      if(li) li.scrollIntoView({block:"nearest",behavior:"smooth"});
+    }
+  }
+  function runDemo(){
+    ran=true;
+    var diags=activeDiags();
+    var ids={}; diags.forEach(function(d){ids[d.id]=d;});
+    demoText.querySelectorAll("mark").forEach(function(m){
+      var d=ids[m.dataset.id];
+      m.className="";
+      if(d) m.classList.add(d.sev==="error"?"on-err":(d.sev==="warning"?"on-warn":"on-info"));
+    });
+    diagList.innerHTML="";
+    diags.forEach(function(d){
+      var li=document.createElement("li");
+      li.className="sev-"+d.sev; li.dataset.id=d.id;
+      li.innerHTML='<span class="sev sev-'+d.sev+'">'+(d.sev==="error"?"エラー":d.sev==="warning"?"警告":"情報")+'</span><b></b><span class="why"></span>';
+      li.querySelector("b").textContent=d.rule;
+      li.querySelector(".why").textContent=d.why;
+      li.addEventListener("click",function(){ selectDiag(d.id,false); });
+      diagList.appendChild(li);
+    });
+    var nErr=diags.filter(function(d){return d.sev==="error";}).length;
+    var nWarn=diags.length-nErr;
+    diagSummary.textContent="検出 "+diags.length+" 件（エラー "+nErr+" / 警告 "+nWarn+"）。下線か診断をタップすると対応箇所が強調されます。";
+    if(selectedId) selectDiag(selectedId,false);
+  }
+  document.getElementById("runBtn").addEventListener("click",runDemo);
+  document.getElementById("clearBtn").addEventListener("click",function(){
+    ran=false; selectedId=null;
+    demoText.querySelectorAll("mark").forEach(function(m){m.className="";});
+    diagList.innerHTML=""; diagSummary.textContent="まだ実行していません。";
+  });
+  document.getElementById("scopeToggle").addEventListener("change",function(){ if(ran) runDemo(); });
+  buildDemoText();
+
+  /* ============ 3. トークンデモ ============ */
+  var TOK_OFF=[
+    {s:"天霧",d:"名詞・固有名詞",base:"天霧",read:"テンム"},
+    {s:"澪",d:"名詞・一般",base:"澪",read:"レイ"},
+    {s:"は",d:"助詞・係助詞",base:"は",read:"ハ"},
+    {s:"剣",d:"名詞・一般",base:"剣",read:"ケン"},
+    {s:"を",d:"助詞・格助詞",base:"を",read:"ヲ"},
+    {s:"取っ",d:"動詞・自立 五段",base:"取る",read:"トッ"},
+    {s:"た",d:"助動詞",base:"た",read:"タ"},
+    {s:"。",d:"記号・句点",base:"。",read:"。"}
+  ];
+  var TOK_ON=[
+    {s:"天霧澪",d:"固有名詞（ユーザー辞書）",base:"天霧澪",read:"アマギリミオ",user:true},
+    {s:"は",d:"助詞・係助詞",base:"は",read:"ハ"},
+    {s:"剣",d:"名詞・一般",base:"剣",read:"ケン"},
+    {s:"を",d:"助詞・格助詞",base:"を",read:"ヲ"},
+    {s:"取っ",d:"動詞・自立 五段",base:"取る",read:"トッ"},
+    {s:"た",d:"助動詞",base:"た",read:"タ"},
+    {s:"。",d:"記号・句点",base:"。",read:"。"}
+  ];
+  var tokRow=document.getElementById("tokRow"), tokNote=document.getElementById("tokNote");
+  function renderTok(){
+    var on=document.getElementById("udToggle").checked;
+    var toks=on?TOK_ON:TOK_OFF;
+    tokRow.innerHTML="";
+    toks.forEach(function(t){
+      var el=document.createElement("div");
+      el.className="tok"+(t.user?" user":"");
+      el.innerHTML='<span class="s"></span><span class="d"></span><span class="d"></span>';
+      var ds=el.querySelectorAll(".d");
+      el.querySelector(".s").textContent=t.s;
+      ds[0].textContent=t.d; ds[1].textContent="原形："+t.base+" ／ 読み："+t.read;
+      tokRow.appendChild(el);
+    });
+    tokNote.textContent = on
+      ? "ユーザー辞書ON：登録した「天霧澪」が1トークンになり、登録読み「アマギリミオ」が付く。固有名詞の同定（表記ゆれ検出）とルビ付与の両方に効く。"
+      : "ユーザー辞書OFF：未登録の人名は途中で割れ、読みも辞書の既定（テンム／レイ）になってしまう。これが固有名詞の検出漏れとルビの誤りの原因になる。";
+  }
+  document.getElementById("udToggle").addEventListener("change",renderTok);
+  renderTok();
+})();
+</script>
+</body>
+</html>
