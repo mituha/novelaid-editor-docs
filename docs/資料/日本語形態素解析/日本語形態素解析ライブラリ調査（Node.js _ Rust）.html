@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>日本語形態素解析ライブラリ調査（Node.js / Rust）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#f7f5f1;
+    --bg-raise:#fffdfa;
+    --bg-sink:#efece5;
+    --ink:#1d1a16;
+    --ink-2:#4c463e;
+    --ink-3:#7d766a;
+    --line:#ddd6c9;
+    --line-strong:#c6bda9;
+    --accent:#b23a17;          /* 朱 */
+    --accent-soft:#f6e3da;
+    --node:#2f6b33;            /* Node 緑 */
+    --node-soft:#e2eee0;
+    --rust:#8a4b16;            /* Rust 茶 */
+    --rust-soft:#f3e7d3;
+    --good:#2f6b33;
+    --warn:#96660a;
+    --bad:#a02c1c;
+    --code-bg:#262019;
+    --code-ink:#f2e9da;
+    --shadow:0 1px 2px rgba(40,30,15,.06),0 8px 28px -18px rgba(40,30,15,.35);
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#17140f;
+      --bg-raise:#201c16;
+      --bg-sink:#1b1813;
+      --ink:#ece5d8;
+      --ink-2:#c4bba9;
+      --ink-3:#948b7a;
+      --line:#37312a;
+      --line-strong:#4c4436;
+      --accent:#e0704a;
+      --accent-soft:#3a2318;
+      --node:#7fb984;
+      --node-soft:#1e2f1f;
+      --rust:#d69a52;
+      --rust-soft:#332612;
+      --good:#7fb984;
+      --warn:#d8a94e;
+      --bad:#e07a63;
+      --code-bg:#100d09;
+      --code-ink:#f2e9da;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -18px rgba(0,0,0,.7);
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic UI",system-ui,sans-serif;
+    font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+  h1,h2,h3{font-family:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;line-height:1.45}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
+  code,kbd{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+  /* ---------- lead ---------- */
+  .lead{padding:52px 0 8px}
+  .lead .dateline{font-size:.82rem;letter-spacing:.14em;color:var(--ink-3);font-weight:700}
+  .lead h1{font-size:clamp(1.9rem,5.4vw,3rem);font-weight:800;margin:.35em 0 .3em;letter-spacing:.01em}
+  .lead h1 .thin{display:block;font-size:.52em;font-weight:600;color:var(--ink-2);margin-top:.35em;letter-spacing:.04em}
+  .lead p.lede{font-size:1.06rem;color:var(--ink-2);max-width:46em;margin:0}
+  .lead p.lede strong{color:var(--ink)}
+
+  .qa{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:34px 0 8px}
+  .qa article{background:var(--bg-raise);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:var(--radius);padding:18px 18px 14px;box-shadow:var(--shadow)}
+  .qa .q{font-size:.8rem;font-weight:900;letter-spacing:.06em;color:var(--accent);margin:0 0 6px}
+  .qa .a{font-weight:700;font-size:1.02rem;line-height:1.6;margin:0 0 6px}
+  .qa p{font-size:.88rem;color:var(--ink-2);margin:0;line-height:1.7}
+  @media (max-width:760px){.qa{grid-template-columns:1fr}}
+
+  /* ---------- verdict ---------- */
+  .verdict{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:26px 0 0}
+  @media (max-width:760px){.verdict{grid-template-columns:1fr}}
+  .vcard{background:var(--bg-raise);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .vcard header{padding:14px 20px 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .vcard header .sys{font-weight:900;font-size:1.05rem}
+  .vcard header .env{font-size:.8rem;color:var(--ink-3)}
+  .vcard.node{border-top:4px solid var(--node)}
+  .vcard.rust{border-top:4px solid var(--rust)}
+  .vcard .body{padding:2px 20px 18px}
+  .pick{display:flex;gap:12px;padding:12px 0;border-top:1px dashed var(--line)}
+  .pick>div{min-width:0;flex:1}
+  .pick:first-child{border-top:none}
+  .pick .rank{flex:0 0 auto;font-size:.72rem;font-weight:900;letter-spacing:.08em;padding:3px 8px;border-radius:99px;height:fit-content;margin-top:4px}
+  .rank.first{background:var(--accent);color:#fff}
+  .rank.second{background:var(--bg-sink);color:var(--ink-2);border:1px solid var(--line-strong)}
+  .pick h3{margin:0;font-size:1.25rem}
+  .pick p{margin:4px 0 0;font-size:.9rem;color:var(--ink-2)}
+  .install{display:flex;align-items:center;gap:8px;background:var(--code-bg);border-radius:8px;padding:9px 10px 9px 14px;margin-top:10px;flex-wrap:wrap}
+  .install code{color:var(--code-ink);font-size:.82rem;white-space:normal;overflow-wrap:anywhere;flex:1 1 12em;min-width:0}
+  .copybtn{flex:0 0 auto;border:1px solid rgba(255,255,255,.25);background:transparent;color:var(--code-ink);font-size:.74rem;font-weight:700;border-radius:6px;padding:5px 10px;cursor:pointer;font-family:inherit}
+  .copybtn:hover{background:rgba(255,255,255,.12)}
+  .common-note{margin:16px 0 0;background:var(--accent-soft);border-radius:var(--radius);padding:16px 20px;font-size:.94rem}
+  .common-note strong{color:var(--accent)}
+
+  /* ---------- sections ---------- */
+  section{padding:44px 0 6px}
+  .sec-head{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:22px}
+  .sec-head .no{font-family:"IBM Plex Mono",monospace;font-size:.85rem;color:var(--accent);font-weight:600}
+  .sec-head h2{font-size:clamp(1.35rem,3.4vw,1.8rem);font-weight:800;margin:0}
+  .sec-head p{margin:0 0 0 auto;font-size:.85rem;color:var(--ink-3);max-width:26em;text-align:right}
+  @media (max-width:760px){.sec-head{flex-wrap:wrap}.sec-head p{margin:0;text-align:left}}
+  section>p{max-width:52em;color:var(--ink-2)}
+  section>p strong,section li strong{color:var(--ink)}
+
+  /* ---------- ruby lab ---------- */
+  .lab{background:var(--bg-raise);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px}
+  .lab h3{margin:0 0 4px;font-size:1.1rem}
+  .lab .hint{font-size:.86rem;color:var(--ink-3);margin:0 0 16px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .chip{border:1px solid var(--line-strong);background:var(--bg);color:var(--ink);border-radius:99px;padding:7px 14px;font-size:.86rem;font-weight:700;cursor:pointer;font-family:inherit}
+  .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:760px){.lab-grid{grid-template-columns:1fr}}
+  .panel{background:var(--bg-sink);border-radius:var(--radius);padding:16px 18px;min-height:150px}
+  .panel .cap{font-size:.74rem;font-weight:900;letter-spacing:.1em;color:var(--ink-3);margin:0 0 10px}
+  .panel pre{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:14px;font-size:.8rem;line-height:1.7;overflow-x:auto;white-space:pre}
+  .ruby-demo{font-family:"Shippori Mincho B1",serif;font-size:1.65rem;line-height:2.2;letter-spacing:.04em}
+  .ruby-demo rt{font-family:"Zen Kaku Gothic New",sans-serif;font-size:.42em;color:var(--accent);font-weight:700;letter-spacing:.06em}
+  .tokenline{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .tokenline span{font-size:.78rem;background:var(--bg-raise);border:1px solid var(--line);border-radius:6px;padding:3px 9px}
+  .tokenline span b{color:var(--accent)}
+  .note-small{font-size:.84rem;color:var(--ink-3);margin-top:14px}
+
+  /* ---------- user dict ---------- */
+  .dict-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;align-items:start}
+  @media (max-width:860px){.dict-grid{grid-template-columns:1fr}}
+  .fmt-list{display:grid;gap:12px}
+  .fmt{background:var(--bg-raise);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+  .fmt h3{margin:0 0 2px;font-size:1.02rem;font-family:"Zen Kaku Gothic New",sans-serif;font-weight:900}
+  .fmt h3 .tag{font-size:.7rem;vertical-align:2px;margin-left:8px}
+  .fmt p{margin:4px 0 8px;font-size:.88rem;color:var(--ink-2)}
+  .fmt pre{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:11px 13px;font-size:.78rem;overflow-x:auto;white-space:pre;line-height:1.7}
+  .tag{display:inline-block;font-size:.7rem;font-weight:900;letter-spacing:.05em;border-radius:99px;padding:2px 9px}
+  .tag.ok{background:var(--node-soft);color:var(--node)}
+  .tag.mid{background:var(--rust-soft);color:var(--rust)}
+  .tag.ng{background:#f3dcd6;color:var(--bad)}
+  @media (prefers-color-scheme: dark){.tag.ng{background:#38201b}}
+  .toggle-box{background:var(--bg-raise);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px}
+  .toggle-box h3{margin:0 0 4px;font-size:1.05rem}
+  .toggle-box .hint{font-size:.85rem;color:var(--ink-3);margin:0 0 14px}
+  .switchrow{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .switch{position:relative;width:52px;height:28px;flex:0 0 auto;border:none;background:transparent;padding:0;cursor:pointer}
+  .switch .track{position:absolute;inset:0;background:var(--line-strong);border-radius:99px;transition:background .2s}
+  .switch .track::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--bg-raise);transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .switch[aria-checked="true"] .track{background:var(--accent)}
+  .switch[aria-checked="true"] .track::after{left:27px}
+  .switch:focus-visible .track{outline:2px solid var(--accent);outline-offset:2px}
+  .switchrow .state{font-weight:900;font-size:.95rem}
+  .splitview{font-size:.92rem;line-height:2}
+  .splitview .w{display:inline-block;border-bottom:2px solid var(--line-strong);padding:0 2px;margin:0 1px}
+  .splitview .w small{display:block;font-size:.68rem;color:var(--ink-3);text-align:center;line-height:1.3}
+  .splitview .w.merged{border-bottom-color:var(--accent);background:var(--accent-soft);border-radius:4px 4px 0 0}
+  .splitview .w.merged small{color:var(--accent);font-weight:700}
+
+  /* ---------- tables ---------- */
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tabbtn{border:1px solid var(--line-strong);background:var(--bg-raise);color:var(--ink-2);font-weight:900;font-size:.92rem;border-radius:8px 8px 0 0;border-bottom:none;padding:10px 20px;cursor:pointer;font-family:inherit}
+  .tabbtn[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .tablewrap{border:1px solid var(--line);border-radius:0 12px 12px 12px;background:var(--bg-raise);box-shadow:var(--shadow);overflow:hidden}
+  table{border-collapse:collapse;width:100%;font-size:.87rem}
+  th,td{padding:11px 13px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  thead th{background:var(--bg-sink);font-size:.76rem;letter-spacing:.06em;color:var(--ink-2);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td.lib{font-weight:900;white-space:nowrap}
+  td.lib .sub{display:block;font-weight:500;font-size:.76rem;color:var(--ink-3)}
+  .pill{display:inline-block;font-size:.72rem;font-weight:900;border-radius:99px;padding:1px 8px;white-space:nowrap}
+  .pill.ok{background:var(--node-soft);color:var(--node)}
+  .pill.mid{background:var(--rust-soft);color:var(--rust)}
+  .pill.ng{background:#f3dcd6;color:var(--bad)}
+  .pill.unk{background:var(--bg-sink);color:var(--ink-3);border:1px solid var(--line-strong)}
+  @media (prefers-color-scheme: dark){.pill.ng{background:#38201b}}
+  tr.reco td{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}
+  @media (max-width:820px){
+    table,thead,tbody,tr,td{display:block;width:100%}
+    thead{display:none}
+    tbody tr{border-bottom:2px solid var(--line-strong);padding:8px 0}
+    tbody tr:last-child{border-bottom:none}
+    td{border-bottom:none;padding:5px 14px}
+    td.lib{font-size:1rem;padding-top:10px}
+    td::before{content:attr(data-h);display:block;font-size:.7rem;font-weight:900;letter-spacing:.08em;color:var(--ink-3)}
+    td.lib::before{display:none}
+  }
+
+  /* ---------- library details ---------- */
+  .libgroup{font-size:.8rem;font-weight:900;letter-spacing:.12em;color:var(--ink-3);margin:26px 0 10px}
+  details.lib{border:1px solid var(--line);background:var(--bg-raise);border-radius:var(--radius);margin-bottom:10px;box-shadow:var(--shadow)}
+  details.lib summary{cursor:pointer;list-style:none;padding:15px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  details.lib summary::-webkit-details-marker{display:none}
+  details.lib summary .name{font-weight:900;font-size:1.05rem;font-family:"Shippori Mincho B1",serif}
+  details.lib summary .one{font-size:.83rem;color:var(--ink-2)}
+  details.lib summary .chev{margin-left:auto;color:var(--ink-3);transition:transform .2s;flex:0 0 auto}
+  details.lib[open ] summary .chev{transform:rotate(180deg)}
+  details.lib .detail{padding:2px 18px 18px;border-top:1px dashed var(--line)}
+  dl.spec{display:grid;grid-template-columns:9.5em 1fr;gap:6px 16px;font-size:.9rem;margin:14px 0 0}
+  dl.spec dt{font-weight:900;color:var(--ink-2);font-size:.82rem;padding-top:2px}
+  dl.spec dd{margin:0;color:var(--ink-2)}
+  dl.spec dd strong{color:var(--ink)}
+  @media (max-width:560px){dl.spec{grid-template-columns:1fr}dl.spec dd{margin-bottom:6px}}
+  .srcs{font-size:.78rem;color:var(--ink-3);margin-top:12px;word-break:break-all}
+  .badge-first{font-size:.7rem;font-weight:900;background:var(--accent);color:#fff;border-radius:99px;padding:2px 9px;letter-spacing:.05em}
+  .badge-second{font-size:.7rem;font-weight:900;background:var(--bg-sink);border:1px solid var(--line-strong);color:var(--ink-2);border-radius:99px;padding:2px 9px;letter-spacing:.05em}
+
+  /* ---------- misc blocks ---------- */
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:760px){.cols2{grid-template-columns:1fr}}
+  .minicard{background:var(--bg-raise);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
+  .minicard h3{margin:0 0 8px;font-size:1.08rem}
+  .minicard p,.minicard li{font-size:.9rem;color:var(--ink-2)}
+  .minicard ul{margin:6px 0;padding-left:1.2em}
+  ul.tight{padding-left:1.25em}
+  ul.tight li{margin:5px 0;color:var(--ink-2)}
+  .unknown{background:var(--bg-sink);border:1px dashed var(--line-strong);border-radius:var(--radius);padding:18px 22px}
+  .unknown ul{margin:6px 0;padding-left:1.2em;font-size:.9rem;color:var(--ink-2)}
+  .unknown li{margin:6px 0}
+  .sources{font-size:.85rem;color:var(--ink-2)}
+  .sources li{margin:7px 0;word-break:break-all}
+  footer{margin:56px 0 0;border-top:2px solid var(--ink);padding:18px 0 44px;font-size:.83rem;color:var(--ink-3)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= LEAD ================= -->
+  <div class="lead">
+    <p class="dateline">調査日：2026年10月30日〜31日 ／ 出典は GitHub・npm・crates.io 等の公式情報を優先</p>
+    <h1>日本語形態素解析ライブラリ調査<span class="thin">小説執筆エディター（novelaide / novelaid-editor）のための、Node.js 系と Rust 系の比較</span></h1>
+    <p class="lede">用途はルビ（ふりがな）自動付与、校正支援、表記ゆれ検出、本文検索のための分かち書き。そして追加要件として、<strong>登場人物名や地名などの造語を「読み」付きで実行時に登録できるか（ユーザー辞書）</strong>を最重要の確認項目とした。<strong>結論は両系統とも Lindera</strong> —— エンジン・辞書・ユーザー辞書ファイルを Electron 版と Tauri 版で共通化できるのが決め手になる。</p>
+
+    <div class="qa">
+      <article>
+        <p class="q">Q1. おすすめはどれか</p>
+        <p class="a">Rust・Node とも Lindera が第一候補</p>
+        <p>Rust 側の次点は Vibrato。Node 側の次点は条件付きで kuromoji 系の保守フォーク（ユーザー辞書なしを割り切れる場合のみ）。</p>
+      </article>
+      <article>
+        <p class="q">Q2. ユーザー辞書は使えるか</p>
+        <p class="a">Lindera は「3列CSV」だけで登録できる</p>
+        <p>表層形・品詞・読みだけの簡易 CSV を読み直し、プロセス内で Tokenizer を再構築すれば即反映。kuromoji 系は公式対応なし。</p>
+      </article>
+      <article>
+        <p class="q">Q3. 読み仮名は形態素解析の機能か</p>
+        <p class="a">はい。標準機能に含まれている</p>
+        <p>形態素解析は形態素ごとに「表記・品詞・原形・読み」をセットで返す。ルビ自動付与は、その読みをそのまま使うのが王道。</p>
+      </article>
+    </div>
+
+    <div class="verdict">
+      <div class="vcard rust">
+        <header><span class="sys">Rust 系</span><span class="env">Tauri 製エディター（novelaide）向け</span></header>
+        <div class="body">
+          <div class="pick">
+            <span class="rank first">第一候補</span>
+            <div>
+              <h3>Lindera 6.2.0</h3>
+              <p>2026-09-26 リリースと最も活発。純 Rust で辞書埋め込み可。品詞・原形・読み・発音が揃い、ユーザー辞書は簡易 CSV 3列で最も簡単。</p>
+              <div class="install"><code>lindera = { version = "6", features = ["embed-ipadic"] }</code><button class="copybtn" data-copy='lindera = { version = "6", features = ["embed-ipadic"] }'>コピー</button></div>
+              <p style="font-size:.8rem">解析チェーン（フィルタ類）は companion crate <code>lindera-analysis = "6"</code> を併用。</p>
+            </div>
+          </div>
+          <div class="pick">
+            <span class="rank second">次点</span>
+            <div>
+              <h3>Vibrato 0.5.x</h3>
+              <p>純 Rust で高速、MeCab 互換。ユーザー辞書を実行時に差し替える正式 API があるが、CSV は MeCab 形式フル仕様（左右ID・コスト必須）で手間が大きい。</p>
+              <div class="install"><code>cargo add vibrato</code><button class="copybtn" data-copy="cargo add vibrato">コピー</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vcard node">
+        <header><span class="sys">Node.js 系</span><span class="env">Electron 製エディター（novelaid-editor）向け</span></header>
+        <div class="body">
+          <div class="pick">
+            <span class="rank first">第一候補</span>
+            <div>
+              <h3>Lindera 系（npm）</h3>
+              <p>ネイティブ版 <code>lindera</code> と WASM 版 <code>lindera-wasm</code> の2系統。ユーザー辞書と読みの取得に対応する唯一の現行選択肢で、Rust 側と資産を共有できる。</p>
+              <div class="install"><code>npm install lindera</code><button class="copybtn" data-copy="npm install lindera">コピー</button></div>
+              <div class="install"><code>npm install lindera-wasm</code><button class="copybtn" data-copy="npm install lindera-wasm">コピー</button></div>
+            </div>
+          </div>
+          <div class="pick">
+            <span class="rank second">次点・条件付き</span>
+            <div>
+              <h3>@faanau/kuromoji（保守フォーク）</h3>
+              <p>純 JS で組み込みが最も楽、実績も最大。ただし<strong>ユーザー辞書は公式非対応</strong>。「読み替え表をアプリ側で別途持つ」割り切りができる場合に限る。</p>
+              <div class="install"><code>npm install @faanau/kuromoji</code><button class="copybtn" data-copy="npm install @faanau/kuromoji">コピー</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="common-note"><strong>共通化の利点：</strong>両系統で Lindera を使えば、作品ごとの用語集（登場人物名＋読み）を同じ簡易 CSV で一元管理でき、ルビの付き方・表記ゆれ判定・分かち書き境界が系統間で一致する。先に Electron 版を WASM で作り、後から Tauri 版を作る段階的移行でも、解析層をほぼそのまま移植できる。</p>
+  </div>
+
+  <!-- ================= 1. RUBY ================= -->
+  <section id="ruby">
+    <div class="sec-head"><span class="no">01</span><h2>読み仮名は、形態素解析の標準機能</h2><p>ルビ自動付与の実装観点</p></div>
+    <p>形態素解析は文を形態素に分けるだけでなく、各形態素について<strong>品詞・原形・読み（ヨミ）・発音</strong>を辞書エントリからセットで返す。だからルビ付与は「解析して、各形態素の読みをルビにする」で完結し、文脈で読みが変わる語（「今日＝きょう」「明日＝あした」）も、採用された辞書エントリの読みがそのまま返る。ライブラリごとに<strong>読みを取り出すフィールド名が違う</strong>のが実装上の要点になる。</p>
+    <p>注意点が2つある。第一に、IPADIC 系の「読み」は原則<strong>カタカナ</strong>なので、小説のルビ（通常ひらがな）にするにはカタカナ→ひらがな変換が別途必要（自前実装は容易）。第二に「読み」と「発音」は別フィールドで、発音は長音・撥音を反映した形（例：関西国際空港の発音はカンサイコクサイク<strong>ー</strong>コ<strong>ー</strong>）。ルビにどちらを使うかはエディター側のポリシーとして決める。</p>
+
+    <div class="lab">
+      <h3>読みの取り出し方エクスプローラー</h3>
+      <p class="hint">ライブラリを選ぶと、読みの取得方法と、確定している実例（Lindera 公式サンプルの「関西国際空港」）でのルビ表示を確認できる。</p>
+      <div class="chips" role="group" aria-label="ライブラリ選択">
+        <button class="chip" data-lib="lindera" aria-pressed="true">Lindera（Rust / Node / WASM）</button>
+        <button class="chip" data-lib="kuromoji" aria-pressed="false">kuromoji 系</button>
+        <button class="chip" data-lib="vibrato" aria-pressed="false">Vibrato</button>
+        <button class="chip" data-lib="sudachi" aria-pressed="false">sudachi.rs</button>
+        <button class="chip" data-lib="mecabnode" aria-pressed="false">MeCab 系（Node）</button>
+        <button class="chip" data-lib="vaporetto" aria-pressed="false">Vaporetto</button>
+        <button class="chip" data-lib="tiny" aria-pressed="false">TinySegmenter 系</button>
+      </div>
+      <div class="lab-grid">
+        <div class="panel">
+          <p class="cap">取得方法</p>
+          <pre id="lab-code"></pre>
+          <p class="note-small" id="lab-note" style="margin-top:12px"></p>
+        </div>
+        <div class="panel">
+          <p class="cap">ルビ表示の例 ― 関西国際空港（Lindera 公式サンプル出力より）</p>
+          <div class="ruby-demo"><ruby>関西国際空港<rt id="lab-rt">かんさいこくさいくうこう</rt></ruby></div>
+          <div class="tokenline" id="lab-tokens"></div>
+        </div>
+      </div>
+      <p class="note-small">※ ルビ表示は全ライブラリ共通の例として、読みが確定している「関西国際空港」（読み：カンサイコクサイクウコウ／発音：カンサイコクサイクーコー）をひらがな化して表示している。各ライブラリの実際の出力フィールドは左のパネル側を参照。</p>
+    </div>
+  </section>
+
+  <!-- ================= 2. USER DICT ================= -->
+  <section id="userdict">
+    <div class="sec-head"><span class="no">02</span><h2>ユーザー辞書 ― 動的な単語追加の可否が分かれ目</h2><p>登場人物名・地名・造語を読み付きで登録する</p></div>
+    <p>小説エディターでは、作品固有の人名や造語に正しい読みを持たせて登録し、ルビ・校正・分割すべてに反映したい。この「実行時の単語追加」への対応が、今回の調査で最も大きく明暗を分けた。対応していても<strong>登録フォーマットの重さ</strong>がまったく違い、エディターの「作品用語集」UI と直結させやすいかどうかが実用性を決める。</p>
+
+    <div class="dict-grid">
+      <div class="fmt-list">
+        <div class="fmt">
+          <h3>Lindera <span class="tag ok">対応 ◎ 最も簡単</span></h3>
+          <p>簡易 CSV は<strong>3列だけ</strong>。コストや左右文脈IDは不要。<code>load_user_dictionary(path, &amp;metadata)</code> で読み込み、Segmenter / Tokenizer をプロセス内で再構築すれば反映される。辞書コンパイルもアプリ再起動も不要。</p>
+          <pre>東京スカイツリー,カスタム名詞,トウキョウスカイツリー
+# 列: 表層形, 品詞, 読み</pre>
+        </div>
+        <div class="fmt">
+          <h3>Vibrato <span class="tag ok">対応 ○ 実行時差し替え可</span></h3>
+          <p><code>Dictionary</code> のユーザー辞書を reader からリセットする API があり、<code>None</code> でクリアもできる。Tokenizer を作り直さず差し替えられるのは強い。ただし CSV は MeCab 形式フル仕様で、左ID・右ID・コストをアプリ側で用意しなければならない。</p>
+          <pre>神保町,1293,1293,334,カスタム名詞,ジンボチョウ
+# 列: 表層形, 左ID, 右ID, コスト, 品詞, 読み（CLI 例より）</pre>
+        </div>
+        <div class="fmt">
+          <h3>sudachi.rs <span class="tag mid">可能 △ バイナリ化が必須</span></h3>
+          <p>登録は Sudachi 形式 CSV を <code>sudachi ubuild</code> でバイナリ <code>user.dic</code> にコンパイルし、<code>sudachi.json</code> の <code>userDict</code> に指定して Tokenizer を（再）生成する方式。1語をコードから即時追加する API は公式ドキュメントに見当たらない。しかも辞書形式が v202610 から V1 になり V0 と非互換 ― システム辞書を更新したらユーザー辞書も作り直しが必要。</p>
+        </div>
+        <div class="fmt">
+          <h3>kuromoji 系 <span class="tag ng">非対応 ×</span></h3>
+          <p>GitHub Issue #18「User dictionary support」は長年の未解決 TODO で、保守フォーク @faanau/kuromoji の README でも「user dictionaries (#18) are not addressed yet」と明記。回避策として辞書全体の再構築が非公式に知られるのみで、公式 API はない。<strong>登場人物名＋読みの登録はこのエンジン単体ではできない。</strong></p>
+        </div>
+        <div class="fmt">
+          <h3>MeCab 系 / Vaporetto <span class="tag mid">本用途には不適</span></h3>
+          <p>MeCab 本体は CSV を <code>mecab-dict-index</code> で <code>.dic</code> 化する方式で、実行時の増分追加 API はない。Vaporetto は実行時 API 自体がなく、語彙は学習時に与えるか、モデルを dump → 編集 → 再投入する外科的編集のみ。</p>
+        </div>
+      </div>
+
+      <div class="toggle-box">
+        <h3>ユーザー辞書があると何が変わるか</h3>
+        <p class="hint">概念図：Lindera の簡易 CSV に <code>東京スカイツリー,カスタム名詞,トウキョウスカイツリー</code> を登録した場合の分割と読みの違い（実測出力ではなく仕組みの説明）。</p>
+        <div class="switchrow">
+          <button type="button" class="switch" id="dict-toggle" role="switch" aria-checked="false" aria-label="ユーザー辞書の有効・無効を切り替え"><span class="track"></span></button>
+          <span class="state" id="dict-state">ユーザー辞書：OFF</span>
+        </div>
+        <div class="splitview" id="splitview" aria-live="polite"></div>
+        <p class="note-small">登録した語は1形態素として扱われ、登録した読みがそのままルビになる。未登録の固有名詞は、既存の語に割れて読みもずれる恐れがある ― 小説では人名で起きやすい問題。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 3. TABLES ================= -->
+  <section id="tables">
+    <div class="sec-head"><span class="no">03</span><h2>比較表</h2><p>メンテ状況・組み込み・辞書・読み・ユーザー辞書・Windows</p></div>
+    <div class="tabs" role="tablist" aria-label="系統の切り替え">
+      <button class="tabbtn" role="tab" id="tab-node" aria-selected="true" aria-controls="panel-node">Node.js 系（Electron）</button>
+      <button class="tabbtn" role="tab" id="tab-rust" aria-selected="false" aria-controls="panel-rust">Rust 系（Tauri）</button>
+    </div>
+
+    <div class="tablewrap" id="panel-node" role="tabpanel" aria-labelledby="tab-node">
+      <table>
+        <thead><tr><th>ライブラリ</th><th>メンテ状況</th><th>組み込み</th><th>辞書</th><th>読みの取得</th><th>ユーザー辞書</th><th>Windows</th></tr></thead>
+        <tbody>
+          <tr class="reco">
+            <td class="lib" data-h="">lindera（npm）<span class="sub">ネイティブ版 ／ 第一候補</span></td>
+            <td data-h="メンテ状況">活発（本体 6.2.0、2026-09-26）</td>
+            <td data-h="組み込み">ネイティブ（prebuilt 有）。要 asar 等の配慮</td>
+            <td data-h="辞書">IPADIC / UniDic 等、実行時ロード</td>
+            <td data-h="読みの取得"><code>token.details[7]</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ok">○ 対応</span> 公式サンプル有。Node 側の正確なシグネチャは未確認</td>
+            <td data-h="Windows">prebuilt のアーキ選択に注意</td>
+          </tr>
+          <tr class="reco">
+            <td class="lib" data-h="">lindera-wasm<span class="sub">WASM 版 ／ 第一候補</span></td>
+            <td data-h="メンテ状況">活発（同上）</td>
+            <td data-h="組み込み">WASM、ネイティブ依存なし</td>
+            <td data-h="辞書">実行時ロード（OPFS / バイト列）</td>
+            <td data-h="読みの取得"><code>token.details[7]</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ok">○ 対応</span> バイト列からロード可</td>
+            <td data-h="Windows">バンドラ設定に注意</td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">@faanau/kuromoji<span class="sub">保守フォーク ／ 次点・条件付き</span></td>
+            <td data-h="メンテ状況">新設の保守フォーク、活動中</td>
+            <td data-h="組み込み">純 JS、型定義・ESM 対応</td>
+            <td data-h="辞書">IPADIC 同梱（本家と形式互換）</td>
+            <td data-h="読みの取得"><code>token.reading</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ng">× 未対応</span> と README 明記</td>
+            <td data-h="Windows">問題なし</td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">kuromoji（本家）</td>
+            <td data-h="メンテ状況"><span class="pill ng">停止</span> 0.1.2、2018-03-19</td>
+            <td data-h="組み込み">純 JS、最易</td>
+            <td data-h="辞書">IPADIC 同梱（約 17.8 MB は概算）</td>
+            <td data-h="読みの取得"><code>token.reading</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ng">× 非対応</span> Issue #18 未解決</td>
+            <td data-h="Windows">問題なし</td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">sudachi（npm, WASM）</td>
+            <td data-h="メンテ状況"><span class="pill ng">陳腐化</span> gzip 後も 50 MB 超と README 警告</td>
+            <td data-h="組み込み">WASM、辞書インラインで巨大</td>
+            <td data-h="辞書">SudachiDict インライン</td>
+            <td data-h="読みの取得">本体仕様では <span class="pill ok">○</span>（JS 側フィールド名は未確認）</td>
+            <td data-h="ユーザー辞書"><span class="pill unk">未確認</span></td>
+            <td data-h="Windows"><span class="pill unk">未確認</span></td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">sudachi-wasm333</td>
+            <td data-h="メンテ状況">第三者の新しめの配布</td>
+            <td data-h="組み込み">WASM、辞書は動的ロード</td>
+            <td data-h="辞書">SudachiDict 別途</td>
+            <td data-h="読みの取得">本体仕様では <span class="pill ok">○</span>（同上）</td>
+            <td data-h="ユーザー辞書"><span class="pill unk">未確認</span></td>
+            <td data-h="Windows"><span class="pill unk">未確認</span></td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">@enjoyjs/node-mecab</td>
+            <td data-h="メンテ状況">小規模に継続（7 リリース）</td>
+            <td data-h="組み込み"><span class="pill ng">外部 MeCab 必須</span></td>
+            <td data-h="辞書">MeCab の辞書に依存</td>
+            <td data-h="読みの取得">構造化 <code>reading</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書">本体の .dic 化が前提（ラッパーでの指定法は未確認）</td>
+            <td data-h="Windows">MeCab の導入・文字コードが壁</td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">tiny-segmenter 系</td>
+            <td data-h="メンテ状況">低調</td>
+            <td data-h="組み込み">純 JS</td>
+            <td data-h="辞書">なし</td>
+            <td data-h="読みの取得"><span class="pill ng">× 取得不可</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ng">×</span></td>
+            <td data-h="Windows">問題なし</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tablewrap hidden" id="panel-rust" role="tabpanel" aria-labelledby="tab-rust">
+      <table>
+        <thead><tr><th>ライブラリ</th><th>メンテ状況</th><th>組み込み</th><th>辞書</th><th>読みの取得</th><th>ユーザー辞書</th><th>Windows</th></tr></thead>
+        <tbody>
+          <tr class="reco">
+            <td class="lib" data-h="">lindera 6.2.0<span class="sub">第一候補</span></td>
+            <td data-h="メンテ状況">非常に活発（2026-09-26）</td>
+            <td data-h="組み込み">純 Rust、辞書埋め込み可</td>
+            <td data-h="辞書">IPADIC / NEologd / UniDic / SudachiDict 等</td>
+            <td data-h="読みの取得"><code>details[7]</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ok">◎ 簡易 CSV 3列</span> プロセス内で再構築可</td>
+            <td data-h="Windows">問題なし</td>
+          </tr>
+          <tr class="reco">
+            <td class="lib" data-h="">vibrato 0.5.x<span class="sub">次点</span></td>
+            <td data-h="メンテ状況">継続（間隔は長め）</td>
+            <td data-h="組み込み">純 Rust、辞書は別途・zstd 展開要</td>
+            <td data-h="辞書">IPADIC / UniDic 等（UniDic は数百 MB 級も）</td>
+            <td data-h="読みの取得"><code>feature()</code> 文字列の第8フィールド <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ok">○ 実行時 reset 可</span> ただし MeCab 形式 CSV（ID・コスト必須）</td>
+            <td data-h="Windows">問題なし（詳細は未確認）</td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">sudachi.rs 0.7.x</td>
+            <td data-h="メンテ状況">活発だが 0.7 系は公式に「不安定」警告</td>
+            <td data-h="組み込み">純 Rust だが <span class="pill unk">crates.io 登録が未確認</span>（公式手順は clone＋cargo install）</td>
+            <td data-h="辞書">SudachiDict 別途（Core 約 70 MB 級）、V1/V0 非互換</td>
+            <td data-h="読みの取得"><code>reading_form()</code> <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill mid">△ ubuild でバイナリ化が必須</span>、Tokenizer 再生成</td>
+            <td data-h="Windows"><span class="pill unk">未確認</span></td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">mecab クレート 0.1.6</td>
+            <td data-h="メンテ状況">古い（2023-09-03）</td>
+            <td data-h="組み込み"><span class="pill ng">libmecab ネイティブ依存</span></td>
+            <td data-h="辞書">MeCab 辞書</td>
+            <td data-h="読みの取得">feature 文字列 <span class="pill ok">○</span></td>
+            <td data-h="ユーザー辞書"><span class="pill mid">△ mecab-dict-index で .dic 化が必須</span></td>
+            <td data-h="Windows"><span class="pill ng">32bit 前提等、制約大</span></td>
+          </tr>
+          <tr>
+            <td class="lib" data-h="">vaporetto 0.7.0</td>
+            <td data-h="メンテ状況">継続</td>
+            <td data-h="組み込み">純 Rust、モデルは別途・zstd 展開要</td>
+            <td data-h="辞書">辞書ではなく学習モデル</td>
+            <td data-h="読みの取得">タグ予測（実験的）<span class="pill mid">△</span></td>
+            <td data-h="ユーザー辞書"><span class="pill ng">× 実行時 API なし</span>（学習時のみ）</td>
+            <td data-h="Windows"><span class="pill unk">未確認</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note-small">色付きの行が各系統の推奨。判定の詳細は下のライブラリ別カードと推奨理由を参照。</p>
+  </section>
+
+  <!-- ================= 4. DETAILS ================= -->
+  <section id="details">
+    <div class="sec-head"><span class="no">04</span><h2>ライブラリ別 詳細</h2><p>タップで開閉。情報源は各カード末尾</p></div>
+
+    <p class="libgroup">RUST 系 ― TAURI 想定</p>
+
+    <details class="lib" open>
+      <summary><span class="name">Lindera</span><span class="badge-first">第一候補</span><span class="one">Kuromoji（Java）の Rust 系譜。純 Rust・辞書埋め込み・ユーザー辞書が最も簡単</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd>crates.io: <code>lindera = { version = "6", features = ["embed-ipadic"] }</code>。解析チェーンは companion crate <code>lindera-analysis = "6"</code>（v5 以降、コアは Segmenter に分離）</dd>
+          <dt>メンテナンス</dt><dd><strong>非常に活発</strong>。最新 <strong>v6.2.0（2026-09-26）</strong>、v6.1.0 が同9-25、v6.0.0 が同8-25。main では次期 v7 の表記も見えるが、引用すべき最新版は 6.2.0</dd>
+          <dt>ネイティブ依存</dt><dd>なし（純 Rust）。Windows 向け CLI バイナリも公式リリース資産に含まれる</dd>
+          <dt>辞書</dt><dd>IPADIC、IPADIC-NEologd、UniDic、SudachiDict（v6.0.0 で <code>lindera-sudachidict</code> 追加）、韓国語 ko-dic、中国語 CC-CEDICT / Jieba。埋め込みは feature で選択（<code>embed-ipadic</code> 等）。埋め込まない場合は GitHub Releases のビルド済み辞書を <code>load_dictionary(path)</code> で読む。<code>mmap</code> feature がデフォルト有効</dd>
+          <dt>辞書サイズ</dt><dd><strong>公式のバイト数表は未確認</strong>。参考値（非公式）：第三者ドキュメントでは WASM アセットとして IPADIC 約 11 MiB／UniDic 約 44 MiB との記述がある。NEologd の埋め込みは大型化とコンパイル時間増が指摘されており、採用前に実測すべき</dd>
+          <dt>ライセンス</dt><dd>MIT</dd>
+          <dt>読みの取得</dt><dd>トークンの <code>details</code> 配列。IPADIC では <strong>details[6]＝原形、details[7]＝読み（カタカナ）、details[8]＝発音</strong>。公式サンプル：関西国際空港 → 名詞,固有名詞,組織,*,*,*,関西国際空港,カンサイコクサイクウコウ,カンサイコクサイクーコー</dd>
+          <dt>速度</dt><dd>公式 README：「IPADIC で概ね <strong>10–20 MB/s（シングルスレッド）</strong>」。ベンチマークスイートがリポジトリに同梱</dd>
+          <dt>ユーザー辞書</dt><dd><strong>対応、本調査中で最も簡単</strong>。簡易 CSV 3列 <code>&lt;表層形&gt;,&lt;品詞&gt;,&lt;読み&gt;</code> のみ。<code>load_user_dictionary(path, &amp;metadata)</code> → <code>Segmenter::new(Mode::Normal, dictionary, Some(user_dictionary))</code>。CSV 再読み込み＋再構築で即反映</dd>
+          <dt>Windows</dt><dd>純 Rust のため固有の問題は報告されていない（PHP バインディングの「Windows 非対応」注記は PHP 固有の話で、Rust 本体には当てはまらない）</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/lindera/lindera">github.com/lindera/lindera</a> ／ <a href="https://github.com/lindera/lindera/releases">Releases</a> ／ <a href="https://docs.rs/crate/lindera/latest/">docs.rs/crate/lindera</a>（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">Vibrato</span><span class="badge-second">次点</span><span class="one">MeCab の Rust 再実装（Viterbi）。純 Rust で高速、ユーザー辞書の実行時差し替え API あり</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd>crates.io: <code>vibrato</code></dd>
+          <dt>メンテナンス</dt><dd>継続しているがリリース間隔は長い。GitHub Releases の最新は <strong>v0.5.3</strong>（リリース日は未確認）。crates.io 側で日付を確認できた最新は 0.5.2（2025-03-19、lib.rs）</dd>
+          <dt>ネイティブ依存</dt><dd>なし（純 Rust）</dd>
+          <dt>辞書</dt><dd><strong>同梱なし</strong>。GitHub Releases でビルド済み辞書を配布（ipadic-mecab-2_7_0、unidic-mecab-2_1_2、unidic-cwj-3_1_1、jumandic、naist-jdic、BCCWJ 学習モデル等）。zstd 圧縮のため API の外で展開して <code>Dictionary::read(reader)</code> する手順が必要</dd>
+          <dt>辞書サイズ</dt><dd>UniDic 系は大きい。公式 Releases の表では unidic-cwj-3_1_1 が標準 717 MB／compact 252 MB／compact-dual 300 MB（展開後モデルサイズ）。小説用途なら IPADIC 系の選択が現実的</dd>
+          <dt>ライセンス</dt><dd>Apache-2.0 / MIT デュアル</dd>
+          <dt>読みの取得</dt><dd>個別フィールドの getter はなく、<code>token.feature()</code> が返す MeCab 形式 CSV 文字列をパースする。IPADIC では index 7 が読み、index 8 が発音（例：本 → 名詞,一般,*,*,*,*,本,ホン,ホン）。<code>-O wakati</code> 相当の分かち書き出力にも対応</dd>
+          <dt>速度</dt><dd>公式 Wiki に MeCab との比較あり。README では UniDic-cwj 3.1.1（行列だけでも 459 MiB）で MeCab より高速と説明される（具体的な数値表は Wiki 参照、本ページでは未転記）</dd>
+          <dt>ユーザー辞書</dt><dd><strong>対応（実行時の差し替えが可能）</strong>。<code>Dictionary</code> に reader からユーザー辞書をリセットするメソッド（<code>reset_user_lexicon_from_reader</code> 相当）が文書化され、<code>None</code> でクリアもできる。ただし CSV は MeCab 形式フル仕様（左右ID・コスト必須）</dd>
+          <dt>Windows</dt><dd>純 Rust で公式 README に Windows 固有の警告は見当たらない（それ以上の詳細は未確認）</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/daac-tools/vibrato">github.com/daac-tools/vibrato</a> ／ <a href="https://docs.rs/vibrato/latest/vibrato/dictionary/struct.Dictionary.html">docs.rs/vibrato Dictionary</a> ／ <a href="https://lib.rs/crates/vibrato">lib.rs/crates/vibrato</a>（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">sudachi.rs</span><span class="one">正規化・同義語情報が表記ゆれ検出に最も強いが、組み込み上の課題が多い</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd><strong>注意点</strong>：公式 README の ToDo に「Registration to crates.io」が残っており、通常の crates.io 依存として取得できるかは<strong>未確認</strong>。公式に案内される手順は <code>git clone</code> ＋ <code>cargo build --release</code> ＋ <code>cargo install --path sudachi-cli/</code></dd>
+          <dt>メンテナンス</dt><dd>活発（リリース 14 件、SudachiPy 0.7.0 が 2026-10 月にパッケージ化）。ただし <strong>v0.7 系について公式が「Release v0.7.* is unstable. パッチ間でも破壊的変更がありうるので正確なバージョンを固定せよ」と警告</strong></dd>
+          <dt>ネイティブ依存</dt><dd>なし（純 Rust）</dd>
+          <dt>辞書</dt><dd>SudachiDict（同梱なし、別途ダウンロード）。Small（UniDic 語彙のみ）／Core（デフォルト）／Full（固有名詞を増強）の3版。Core のダウンロードが約 70 MB（SudachiPy README）、sudachidict_core の wheel（20261015）が 76.9 MB、conda では small 約 27.6 MB／core 約 51.4 MB（いずれも概数）。<strong>辞書バイナリ形式が v202610 から V1 になり、V0 と互換性がない</strong></dd>
+          <dt>ライセンス</dt><dd>本体 Apache-2.0。SudachiDict は UniDic 由来＋NEologd 由来の語彙を含み、それぞれのライセンス条件が及ぶ</dd>
+          <dt>読みの取得</dt><dd>形態素の <code>reading_form()</code>（カタカナ読み）。CLI では <code>-a</code> オプションの出力列「Reading Form」。表層形・品詞・正規化形が基本出力で、<code>-a</code> 相当で辞書形・読み・辞書ID・同義語グループID・未知語フラグまで得られる。分割モード A（最細）／B／C（最長）の多粒度分割、正規化と同義語IDは<strong>表記ゆれ検出に最も強い材料</strong></dd>
+          <dt>ユーザー辞書</dt><dd>可能だが手順が最も重い。CSV を <code>sudachi ubuild</code> でバイナリ <code>user.dic</code> にコンパイルし、<code>sudachi.json</code> の <code>userDict</code> に指定して Tokenizer を（再）生成。システム辞書を更新したらユーザー辞書も同じ辞書で作り直しが必要</dd>
+          <dt>Windows</dt><dd>公式の Windows 固有の警告は未確認。設定ファイルや辞書のパス解決順はリリースノートに記載がある</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/WorksApplications/sudachi.rs">github.com/WorksApplications/sudachi.rs</a> ／ <a href="https://github.com/WorksApplications/SudachiDict">SudachiDict</a>（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">mecab クレート（Rust）</span><span class="one">libmecab ネイティブ依存＋Windows 制約＋更新の古さで、本用途には不採用</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd>crates.io の <code>mecab</code>（tsurai/mecab-rs）。最新 0.1.6 は <strong>2023-09-03</strong> で更新が古い。MeCab 0.996 に対する安全ラッパー、MIT</dd>
+          <dt>ネイティブ依存</dt><dd><strong>あり（決定的な欠点）</strong>。ビルド／実行時に C++ の libmecab が必要</dd>
+          <dt>読みの取得</dt><dd>MeCab の feature 文字列（品詞, …, 原形, 読み, 発音）として得られる（バインディング経由の構造化度は実装依存）</dd>
+          <dt>ユーザー辞書</dt><dd>MeCab 本体の仕組み：CSV を <code>mecab-dict-index</code> でバイナリ <code>.dic</code> にコンパイルし、Tagger 生成時に <code>-u user.dic</code> や mecabrc で指定。実行時の増分追加 API はなく、反映は Tagger の再生成が必要</dd>
+          <dt>Windows</dt><dd>README（docs.rs 等経由）では、MSVC／gcc 両ツールチェーンとも <strong>32 ビットのプリビルドライブラリを使う前提</strong>、コマンドライン利用はコードページの問題で「推奨しない」、64 ビットは CMake で別途ビルド、といった制約。現代的な 64 ビット Tauri アプリの配布には不向き</dd>
+          <dt>周辺</dt><dd><code>mecab-furigana-rs</code>（1.0.0、lib.rs）のようなルビ特化クレートもあるが、外部 MeCab CLI を呼び出し MeCab＋UTF-8 辞書の事前インストールが前提のため自己完結しない</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://lib.rs/crates/mecab">lib.rs/crates/mecab</a> ／ MeCab 公式の辞書追加手順に関する検索結果（2026-10-30〜31 取得、インデックス）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">Vaporetto</span><span class="one">学習モデル型トークナイザ。読みは実験的タグ予測、動的ユーザー辞書なしで主軸には不適</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd>crates.io: <code>vaporetto</code>。GitHub Releases の最新は <strong>v0.7.0</strong>（シリアライズ基盤を postcard に変更、MSRV 1.88、<strong>モデル形式が 0.6 系と非互換</strong>）。crates.io 側で日付を確認できたのは 0.6.5（2025-03-17、lib.rs）までで、0.7.0 の crates.io 公開日は未確認</dd>
+          <dt>ネイティブ依存</dt><dd>なし（純 Rust）</dd>
+          <dt>モデル</dt><dd>vaporetto-models から配布。例：<code>bccwj-suw+unidic_pos+pron</code>（品詞＋発音タグ）、<code>bccwj-suw+unidic_pos+kana</code>（品詞＋かなタグ）。zstd 圧縮のため API 外で展開が必要。「かなタグ」は表記上の読み、「発音タグ」は実際の発音（例: 東京 kana＝トウキョウ／pron＝トーキョー）</dd>
+          <dt>読みの取得</dt><dd>タグ付きモデル＋ <code>--predict-tags</code> 相当の予測でトークンのタグとして得る。<strong>予測値であり辞書の読みではなく、タグ予測は公式に「実験的」扱い</strong>。辞書由来の確定的な読みや原形のルックアップではない</dd>
+          <dt>速度</dt><dd>公式に「KyTea の 8.7 倍高速」と主張</dd>
+          <dt>ユーザー辞書</dt><dd><strong>実行時 API はなし</strong>。語彙リストは学習時の <code>--dict</code>（品詞・読み付きの語リストも可、例：<code>灯里/名詞-固有名詞-人名-名/アカリ</code>）で与えるか、<code>manipulate_model</code> でモデルを dump→辞書 CSV 編集→再投入する外科的編集のみ。<strong>追加要件を満たさない</strong></dd>
+          <dt>ライセンス</dt><dd>Apache-2.0 / MIT デュアル</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/daac-tools/vaporetto">github.com/daac-tools/vaporetto</a> ／ <a href="https://docs.rs/vaporetto">docs.rs/vaporetto</a> ／ <a href="https://lib.rs/crates/vaporetto">lib.rs/crates/vaporetto</a>（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <p class="libgroup">NODE.JS 系 ― ELECTRON 想定</p>
+
+    <details class="lib">
+      <summary><span class="name">Lindera（Node バインディング／WASM）</span><span class="badge-first">第一候補</span><span class="one">Rust 本体と一体で活発。ユーザー辞書・読みともに対応</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd>v6 系で改名：ネイティブ版は <code>npm install lindera</code>（旧名 lindera-nodejs）。WASM 版は <code>npm install lindera-wasm</code>（旧 lindera-wasm-web / lindera-wasm-bundler を v6 で統合）</dd>
+          <dt>メンテナンス</dt><dd>本体と一体で活発（本体最新 v6.2.0、2026-09-26）</dd>
+          <dt>ネイティブ依存</dt><dd>ネイティブ版はプラットフォーム別 <code>.node</code> バイナリ（prebuilt 配布。Windows 向け <code>win32-x64-msvc</code> / <code>win32-arm64-msvc</code> 系パッケージの存在を npm 系インデックスで確認）。ソースビルドには Rust と Node <code>^20.17.0 || ^22.13.0 || &gt;=23.5.0</code> が必要。WASM 版はネイティブ依存なし</dd>
+          <dt>辞書</dt><dd>IPADIC、IPADIC-NEologd、UniDic ほか。<strong>v6 の WASM 版は辞書を同梱せず、実行時に読み込む方式</strong>：GitHub Releases のビルド済み辞書アーカイブ（例：lindera-ipadic-*.zip）をダウンロードし、OPFS API（<code>downloadDictionary</code> / <code>loadDictionaryFiles</code> / <code>loadDictionaryFromBytes</code>）等でロード。ネイティブ版も例示では <code>loadDictionary("/path/to/ipadic")</code> とパス指定</dd>
+          <dt>ライセンス</dt><dd>MIT（本体）</dd>
+          <dt>読みの取得</dt><dd>トークンはプレーンな JS オブジェクト（<code>surface</code>, <code>byteStart</code>, <code>byteEnd</code>, <code>details</code> 等）。<strong><code>token.details[7]</code></strong>（IPADIC の場合。details[6] が原形、details[8] が発音）。辞書が UniDic 等の場合はフィールド構成が異なる点に注意</dd>
+          <dt>ユーザー辞書</dt><dd><strong>対応</strong>。WASM 版は docs.rs に「Custom user dictionaries」対応と <code>JsUserDictionary</code> が記載され、v6.0.0 リリースノートに「バイト列からユーザー辞書をロード可能」とある。ネイティブ版にも <code>tokenize_with_userdict.js</code> という公式サンプルがある。反映は Tokenizer の再構築で済み、アプリ再起動までは不要という構成。ただし <strong>Node バインディング側の正確な関数シグネチャは未確認</strong>（形式自体は Rust 側の簡易 CSV と共通）</dd>
+          <dt>Windows</dt><dd>ネイティブ版は Electron のネイティブモジュール扱い（asar からの展開、対象アーキテクチャ向け prebuilt の選択）が必要。WASM 版はその問題を回避できる代わりに、辞書ファイルの配置・初回ロードと、Vite 等バンドラでの <code>optimizeDeps</code> 除外・<code>await __wbg_init()</code> の初期化手順に注意</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/lindera/lindera/tree/main/lindera-nodejs">lindera-nodejs</a> ／ <a href="https://github.com/lindera/lindera/tree/main/lindera-wasm">lindera-wasm</a> ／ <a href="https://github.com/lindera/lindera/releases">Releases</a>（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">kuromoji / kuromoji.js 系</span><span class="badge-second">次点・条件付き</span><span class="one">純 JS で最も組み込みやすいが、本家は停止、ユーザー辞書は非対応</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd><code>npm install kuromoji</code>（本家）／ <code>npm install @faanau/kuromoji</code>（保守フォーク）。Java 版 Kuromoji の純 JavaScript 移植</dd>
+          <dt>メンテナンス</dt><dd><strong>本家は事実上停止</strong>。最新版 0.1.2 は 2018-03-19 リリース、以後なし。保守フォーク @faanau/kuromoji は Node 18/20/22/24 でテストが通るよう修正、ESM・型定義同梱、実行時依存を doublearray のみに削減。ただし新設まもない小規模プロジェクト</dd>
+          <dt>ネイティブ依存</dt><dd>なし（純 JS。依存は async, zlibjs, doublearray）。Windows / Electron でのビルドトラブルが最も少ない</dd>
+          <dt>辞書</dt><dd>IPADIC（mecab-ipadic 由来）。辞書は gzip 済みバイナリ（dict/*.dat.gz）として同梱。unpkg のファイル一覧からの合算で約 17.8 MB（調査での概算）</dd>
+          <dt>ライセンス</dt><dd>Apache-2.0</dd>
+          <dt>読みの取得</dt><dd><code>tokenizer.tokenize(text)</code> の各トークンの <strong><code>reading</code></strong> プロパティ（カタカナ）。ほかに品詞（pos, pos_detail_1〜3）、活用型・活用形、原形（basic_form）、発音（pronunciation）も取得可能。ルビには通常 reading をひらがな化して使う</dd>
+          <dt>速度・メモリ</dt><dd>公式の速度数値は未確認</dd>
+          <dt>ユーザー辞書</dt><dd><strong>非対応</strong>。GitHub Issue #18 は長年の未解決 TODO。保守フォークの README でも「not addressed yet」と明記。回避策として辞書全体を再構築する方法が非公式に知られるのみ。<strong>登場人物名＋読みの登録はエンジン単体ではできない</strong></dd>
+          <dt>Windows</dt><dd>純 JS のため固有の問題はほぼなし。Electron では辞書フォルダを同梱し、<code>dicPath</code> に絶対パスを渡す運用が要点</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/takuyaa/kuromoji.js">github.com/takuyaa/kuromoji.js</a> ／ <a href="https://www.npmjs.com/package/kuromoji">npmjs.com/package/kuromoji</a> ／ <a href="https://github.com/faanau/kuromoji-js">github.com/faanau/kuromoji-js</a>（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">Sudachi JS / WASM 系</span><span class="one">公式系は陳腐化・巨大、第三者系はユーザー辞書が未確認。本用途の主軸には推奨しにくい</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt><code>sudachi</code>（npm）</dt><dd>sudachi-wasm の配布。ブラウザ／Node 両対応だが、README 自身が「gzip 後もスクリプトが 50 MB 超」と警告（辞書インライン）。参照されているスクリプトは v0.1.4 世代で古く、Snyk の指標では Inactive 分類（非公式指標）。事実上陳腐化</dd>
+          <dt><code>sudachi-wasm333</code></dt><dd>第三者による「Modern/Updated」な WASM 配布。辞書を動的ロードでき（SudachiDict を別途取得、最新辞書も利用可）、<code>SudachiStateless</code> / <code>SudachiStateful</code> クラス、<code>initialize_node</code> / <code>initialize_browser</code> を提供。ただし個人プロジェクトで、<strong>ユーザー辞書対応は未確認</strong></dd>
+          <dt><code>@hiogawa/sudachi.wasm</code></dt><dd>1.0.1。約3年前の公開（インデックス情報）で更新が止まっている</dd>
+          <dt>取得できる情報</dt><dd>Sudachi 本来の仕様では品詞・正規化形・辞書形・読み・同義語グループID 等が得られる。ただし上記 JS パッケージごとの具体的なフィールド名は未確認</dd>
+          <dt>ユーザー辞書</dt><dd><strong>未確認</strong>（いずれのパッケージの公式ドキュメントにも明記を見つけられなかった）</dd>
+          <dt>Windows</dt><dd>未確認（固有の注意喚起は見つからなかった）</dd>
+        </dl>
+        <p class="srcs">出典：npm <code>sudachi</code> パッケージ README ／ <a href="https://github.com/Benjas333/sudachi-wasm333">github.com/Benjas333/sudachi-wasm333</a> ほか（2026-10-30 取得、インデックス中心）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">Node 向け MeCab ラッパー</span><span class="one">外部 MeCab 本体のインストールが前提。Windows 向け個人開発アプリの配布には負担が大きい</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>@enjoyjs/node-mecab</dt><dd><code>npm i @enjoyjs/node-mecab</code>、MIT、リリース 7 件。<strong>前提として MeCab 本体の外部インストールが必須</strong>。<code>tokenize()</code> は構造化トークンを返し、<code>feature.pos</code>、原形、<code>reading</code>（例：コンニチハ）、発音、コスト等を含む。ユーザー辞書の渡し方が README で明記されているかは未確認</dd>
+          <dt>mecab-async / mecab-lite 系</dt><dd>外部 <code>mecab</code> コマンドを呼び出す旧来型ラッパー。mecab-lite は Windows 7 で動作確認・<strong>Shift_JIS 辞書が必要</strong>と記載。kuroshiro-analyzer-mecab の注記では、基盤の mecab-async がシェル／POSIX 前提で「ネイティブ Windows のシェル互換はテスト対象外、Windows では WSL を使え」とされている</dd>
+          <dt>評価</dt><dd>「ユーザーに MeCab 本体を別途入れさせる」のは配布上の負担が大きく、主軸には不向き</dd>
+        </dl>
+        <p class="srcs">出典：<a href="https://github.com/enjoyjs/node-mecab">github.com/enjoyjs/node-mecab</a> ほか（2026-10-30 取得）</p>
+      </div>
+    </details>
+
+    <details class="lib">
+      <summary><span class="name">TinySegmenter 系</span><span class="one">分かち書き専用。品詞・読み・原形は一切取れないため、ルビには使えない</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="detail">
+        <dl class="spec">
+          <dt>パッケージ</dt><dd><code>tiny-segmenter</code>（npm 0.2.0、2016 年公開）／ <code>@kampersanda/tiny-segmenter</code>（0.3.1）。辞書を持たない統計的分かち書き専用</dd>
+          <dt>読みの取得</dt><dd><strong>取得不可</strong>。分かち書きだけの最軽量フォールバックとしてのみ候補になる</dd>
+        </dl>
+      </div>
+    </details>
+  </section>
+
+  <!-- ================= 5. READING TABLE ================= -->
+  <section id="reading">
+    <div class="sec-head"><span class="no">05</span><h2>「読み」取得方法の一覧</h2><p>ルビ付与の実装ではここがそのまま仕様になる</p></div>
+    <div class="tablewrap" style="border-radius:12px">
+      <table>
+        <thead><tr><th>ライブラリ</th><th>読みの取得方法</th><th>備考</th></tr></thead>
+        <tbody>
+          <tr><td class="lib" data-h="">Lindera<span class="sub">Rust / Node / WASM 共通</span></td><td data-h="取得方法">トークンの <code>details</code> 配列。IPADIC：<code>details[7]</code>＝読み、<code>details[8]</code>＝発音、<code>details[6]</code>＝原形</td><td data-h="備考">辞書（UniDic 等）を変えるとフィールド構成が変わる</td></tr>
+          <tr><td class="lib" data-h="">kuromoji 系</td><td data-h="取得方法">トークンの <code>reading</code> プロパティ（カタカナ）。別に <code>pronunciation</code>（発音）もあり</td><td data-h="備考">ルビには reading をひらがな化するのが定石。kuroshiro はまさにこの変換を行う</td></tr>
+          <tr><td class="lib" data-h="">Vibrato</td><td data-h="取得方法"><code>token.feature()</code> の CSV 文字列をパース。IPADIC：index 7＝読み、index 8＝発音</td><td data-h="備考">フィールド getter はない</td></tr>
+          <tr><td class="lib" data-h="">sudachi.rs</td><td data-h="取得方法">形態素の <code>reading_form()</code> メソッド（CLI では <code>-a</code> の Reading Form 列）</td><td data-h="備考">正規化形 <code>normalized_form()</code>、辞書形も別に取れる</td></tr>
+          <tr><td class="lib" data-h="">MeCab 系（Node）<span class="sub">@enjoyjs/node-mecab</span></td><td data-h="取得方法">構造化された <code>feature.reading</code> 等</td><td data-h="備考">本体 MeCab の feature 準拠</td></tr>
+          <tr><td class="lib" data-h="">MeCab 系（Rust）<span class="sub">mecab クレート</span></td><td data-h="取得方法">node の feature 文字列をパース</td><td data-h="備考">実装依存</td></tr>
+          <tr><td class="lib" data-h="">Vaporetto</td><td data-h="取得方法">タグ予測（<code>+kana</code> / <code>+pron</code> モデル）のタグ値</td><td data-h="備考">予測値であり、実験的。辞書の読みではない</td></tr>
+          <tr><td class="lib" data-h="">TinySegmenter 系</td><td data-h="取得方法"><span class="pill ng">取得不可</span></td><td data-h="備考">分かち書きのみ</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 6. RUBY-ONLY TOOLS ================= -->
+  <section id="rubytools">
+    <div class="sec-head"><span class="no">06</span><h2>補足：漢字→読み変換専用ツール</h2><p>形態素解析とは別区分の選択肢</p></div>
+    <p>「読みを取る」だけなら変換専用ツールという区分もある。ただし位置づけは大きく違う。<strong>kuroshiro は中身が形態素解析の“表示層”</strong>、<strong>KAKASI 系は品詞を持たない辞書照合型</strong>で、文脈による読みの自動選択機構がない。</p>
+
+    <div class="cols2">
+      <div class="minicard">
+        <h3>kuroshiro ― ルビ出力まで一括の変換層</h3>
+        <div class="install" style="margin:0 0 10px"><code>npm install kuroshiro</code><button class="copybtn" data-copy="npm install kuroshiro">コピー</button></div>
+        <ul>
+          <li><code>convert(str, {to, mode})</code> が API の中心。<code>to</code> は hiragana / katakana / romaji、<code>mode</code> の <strong>furigana</strong> は HTML の <code>&lt;ruby&gt;</code> タグを直接出力する。MIT。</li>
+          <li><strong>中身は形態素解析</strong>。解析器はプラグイン式で、公式に kuroshiro-analyzer-kuromoji（kuromoji / IPADIC）と kuroshiro-analyzer-mecab（要 MeCab）。読み分けの能力は内側の解析器と等しい。</li>
+          <li>限界：返るのは変換済み文字列のみで、<strong>形態素の配列を受け取る API はない</strong>。校正や表記ゆれには別途形態素解析が必要。ユーザー辞書も内側の kuromoji が非対応のため登録できない。</li>
+          <li>メンテナンス：1.x 系は長く更新がなかったが、公式リポジトリでは現在 <strong>Version 2（beta、Node 22+ 前提）</strong> の開発が進行中。2.0 の正式リリース時期は未確認。</li>
+        </ul>
+        <p class="srcs">出典：<a href="https://github.com/hexenq/kuroshiro">github.com/hexenq/kuroshiro</a>（2026-10-30 取得）</p>
+      </div>
+      <div class="minicard">
+        <h3>KAKASI 系 ― 辞書照合型の変換器</h3>
+        <ul>
+          <li>「漢字→かな（ローマ字）変換プログラム」（C 言語、本家は GPL v2 以降）。名称は "kanji kana simple inverter" の略。辞書の大部分は SKK 辞書に由来し、熟語辞書（kanwadict）と異体字辞書（itaijidict）を使う。<strong>品詞や接続コストを持たないため、形態素解析器ではない</strong>。</li>
+          <li>読み分け：<strong>文脈で読みを自動選択する機構がない</strong>。公式 manpage の <code>-p</code> オプションが傍証 ― 複数読みは「素子 → {もとこ|そし}」のように列挙できるだけで、1つの選択は利用者側に委ねられる。</li>
+          <li>ユーザー辞書：追加辞書は SKK 形式で「読み, 熟語」の2フィールド。品詞がないため、登録しても読み変換にしか効かず、分割や校正の改善にはつながらない。</li>
+          <li>Python 移植の pykakasi が現行の利用形態として知られるが、npm / crates.io における現行の KAKASI 本体パッケージは未確認。異体字→新字体の変換（itaijidict）は伝統的に得意。</li>
+        </ul>
+        <p class="srcs">出典：<a href="http://kakasi.namazu.org/index.html.ja">kakasi.namazu.org</a> ／ <a href="https://manpages.debian.org/testing/kakasi/kakasi.1.ja.html">Debian manpage</a>（2026-10-31 取得、インデックス）</p>
+      </div>
+    </div>
+
+    <div class="tablewrap" style="border-radius:12px;margin-top:16px">
+      <table>
+        <thead><tr><th>観点</th><th>形態素解析ベース</th><th>kuroshiro</th><th>KAKASI 系</th></tr></thead>
+        <tbody>
+          <tr><td class="lib" data-h="">変換の仕組み</td><td data-h="形態素解析ベース">品詞・接続コストを持つ辞書＋文脈で分割を最適化し、採用された語エントリの読みを返す</td><td data-h="kuroshiro">内側は形態素解析（kuromoji 等）。能力は解析器に依存</td><td data-h="KAKASI 系">品詞・コストを持たない熟語辞書の照合（最長一致的）のみ</td></tr>
+          <tr><td class="lib" data-h="">文脈依存の読み分け</td><td data-h="形態素解析ベース">「今日」「明日」「一日」「上手」のような語でも、文の構造を使って分割と読みの組を選べる余地がある。最終的な読みは採用された辞書エントリで決まる</td><td data-h="kuroshiro">kuromoji 準拠</td><td data-h="KAKASI 系"><strong>自動選択の機構なし</strong>。複数候補は <code>-p</code> で列挙できるだけ</td></tr>
+          <tr><td class="lib" data-h="">送り仮名・活用</td><td data-h="形態素解析ベース">活用形情報を辞書が持ち、語幹と活用語尾を分けて処理できる</td><td data-h="kuroshiro">kuromoji 準拠</td><td data-h="KAKASI 系">辞書の熟語エントリ頼み。活用に伴う読みの変化への対応は弱い</td></tr>
+          <tr><td class="lib" data-h="">固有名詞（造語・人名）</td><td data-h="形態素解析ベース">ユーザー辞書を持つエンジンでは「表記＋読み＋品詞」で登録でき、分割・ルビ・校正すべてに反映</td><td data-h="kuroshiro">内側の kuromoji が非対応のため登録不可</td><td data-h="KAKASI 系">SKK 形式で「読み＋表記」は足せるが、品詞がないため読み変換にしか効かない</td></tr>
+          <tr><td class="lib" data-h="">得られる情報</td><td data-h="形態素解析ベース">品詞・原形・読み・発音など（校正・表記ゆれ・検索に転用可能）</td><td data-h="kuroshiro">変換済み文字列のみ</td><td data-h="KAKASI 系">かな／ローマ字文字列（＋分かち書き）のみ</td></tr>
+          <tr><td class="lib" data-h="">異体字</td><td data-h="形態素解析ベース">辞書次第（Sudachi は正規化プラグインが強い）</td><td data-h="kuroshiro">解析器次第</td><td data-h="KAKASI 系">itaijidict による異体字→新字体の変換は伝統的に得意</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>整理すると、文脈で読みが揺れる語や作品固有の人名を正しく扱うには、文脈情報を持つ形態素解析ベースが構造的に有利。KAKASI 系は「辞書に載っている読みを引く」軽量な変換器、kuroshiro は「形態素解析の結果をルビ付き文字列に整形する表示層」と位置づけるのが正確。</p>
+  </section>
+
+  <!-- ================= 7. RECOMMENDATION ================= -->
+  <section id="recommend">
+    <div class="sec-head"><span class="no">07</span><h2>推奨の理由と、採用時の進め方</h2><p>小説執筆エディター用途での判断</p></div>
+    <div class="cols2">
+      <div class="minicard">
+        <h3>Rust 系：Lindera →（次点）Vibrato</h3>
+        <ul>
+          <li>Lindera はメンテナンスが最も活発で、純 Rust・辞書埋め込みにより Tauri への同梱が素直。</li>
+          <li>品詞・原形・読み・発音が揃い、ルビ・校正・表記ゆれ（原形ベースの集計）・分かち書き検索の全用途を1エンジンでまかなえる。</li>
+          <li>決め手はユーザー辞書：3列 CSV だけで人名・造語を読み付きで登録でき、コスト計算や文脈IDの知識なしに「作品用語集」UI と直結させやすい。</li>
+          <li>辞書はまず IPADIC（軽量）で始め、固有名詞の不足が気になれば UniDic や NEologd 埋め込み（大型化は要実測）、あるいは SudachiDict も同じエンジンのまま選択できる。</li>
+          <li>Vibrato は MeCab 互換が欲しい場合や解析速度を最優先する場合の選択肢。ユーザー辞書 CSV の重さと、辞書の別途配布・zstd 展開が代償。</li>
+          <li>sudachi.rs は解析品質目当てなら有力だが、crates.io 登録の未確認、0.7 系の不安定警告と辞書形式の非互換、ubuild 必須の三点が組み込みコストを押し上げる。将来の再評価候補。</li>
+        </ul>
+      </div>
+      <div class="minicard">
+        <h3>Node 系：Lindera 系 →（条件付き次点）kuromoji 系</h3>
+        <ul>
+          <li>Lindera 系は Rust 側と同じエンジン・辞書・ユーザー辞書形式を使え、解析結果が系統間で一致する。ユーザー辞書と読みの取得に対応する唯一の現行選択肢。</li>
+          <li>ネイティブ版 <code>lindera</code> は速度と実装の素直さで有利だが、Electron のネイティブモジュール配布（asar 外への展開、アーキテクチャ別 prebuilt）の手間がある。</li>
+          <li><code>lindera-wasm</code> はその手間を避けられる代わりに、辞書の実行時ロード設計とバンドラ設定が必要。どちらを選ぶかはパッケージング方針次第。</li>
+          <li>kuromoji 系は純 JS で最も楽で、ルビ用途だけなら kuroshiro を被せれば <code>&lt;ruby&gt;</code> 出力まで一括で得られる。ただしユーザー辞書の公式対応がなく、「作品内蔵の読み替え表をアプリ側で別途持つ」設計を明示的に受け入れることが前提。本家は2018年で停止しているため、使うなら保守フォーク側 ― ただしフォーク自体が新設・小規模であるリスクは残る。</li>
+          <li>Sudachi の JS/WASM 系は、公式系が陳腐化・巨大、第三者系はユーザー辞書が未確認で、現時点では次点にも据えにくい。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 8. UNKNOWN ================= -->
+  <section id="unknown">
+    <div class="sec-head"><span class="no">08</span><h2>未確認事項</h2><p>調査で確認できなかった項目。推測で断定していない</p></div>
+    <div class="unknown">
+      <ul>
+        <li>Lindera の各辞書（埋め込み時）の公式なバイト数。公式のサイズ表は見つからなかった（本文中の約 11 MiB／約 44 MiB は第三者ドキュメントの参考値）。</li>
+        <li>Lindera の Node.js バインディング（npm <code>lindera</code>）におけるユーザー辞書 API の正確な関数シグネチャ。対応自体と公式サンプルの存在は確認済み。</li>
+        <li>Vibrato v0.5.3 の正確なリリース日（crates.io 側で日付を確認できた最新は 0.5.2、2025-03-19）。</li>
+        <li>Vaporetto v0.7.0 の crates.io 公開日（lib.rs で日付を確認できたのは 0.6.5、2025-03-17 まで）。</li>
+        <li>sudachi.rs を crates.io の通常依存として取得できるか（公式 README の ToDo に「Registration to crates.io」の項目が残っている）。および Sudachi の JS/WASM 各パッケージ（<code>sudachi</code>、<code>sudachi-wasm333</code>、<code>@hiogawa/sudachi.wasm</code>）のユーザー辞書対応可否と、読み取得の具体的なフィールド名。</li>
+        <li>@enjoyjs/node-mecab でユーザー辞書ファイルを指定できるか（README での明記を確認できなかった）。</li>
+        <li>kuromoji の公式な速度・メモリ数値（公式ベンチマークの提示を確認できなかった）。</li>
+        <li>kuroshiro 2.0 の正式リリース時期（beta 開発中であることは公式 README で確認）。</li>
+        <li>KAKASI 本家（C 版）の最終リリース時期、および npm / crates.io における現行の KAKASI 本体パッケージの有無。</li>
+        <li>Vibrato / sudachi.rs / Vaporetto の Windows 固有の注意点（公式ドキュメントに明記を見つけられなかった範囲では未確認）。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= 9. SOURCES ================= -->
+  <section id="sources">
+    <div class="sec-head"><span class="no">09</span><h2>出典</h2><p>公式・一次情報を優先。取得日はいずれも 2026-10-30〜31</p></div>
+    <div class="cols2">
+      <div>
+        <p class="libgroup" style="margin-top:0">NODE.JS 系</p>
+        <ul class="sources tight">
+          <li>kuromoji 本家：<a href="https://github.com/takuyaa/kuromoji.js">github.com/takuyaa/kuromoji.js</a> ／ <a href="https://www.npmjs.com/package/kuromoji">npmjs.com/package/kuromoji</a></li>
+          <li>kuromoji 保守フォーク：<a href="https://github.com/faanau/kuromoji-js">github.com/faanau/kuromoji-js</a></li>
+          <li>Lindera 本体・Node/WASM：<a href="https://github.com/lindera/lindera">github.com/lindera/lindera</a> ／ <a href="https://github.com/lindera/lindera/tree/main/lindera-nodejs">lindera-nodejs</a> ／ <a href="https://github.com/lindera/lindera/tree/main/lindera-wasm">lindera-wasm</a> ／ <a href="https://github.com/lindera/lindera/releases">Releases</a> ／ <a href="https://docs.rs/crate/lindera/latest/">docs.rs/crate/lindera</a></li>
+          <li>Sudachi npm 系：npm <code>sudachi</code> パッケージ README ／ <a href="https://github.com/Benjas333/sudachi-wasm333">github.com/Benjas333/sudachi-wasm333</a></li>
+          <li>Node MeCab：<a href="https://github.com/enjoyjs/node-mecab">github.com/enjoyjs/node-mecab</a> ／ kujirahand/node-mecab-lite ほか</li>
+          <li>kuroshiro：<a href="https://github.com/hexenq/kuroshiro">github.com/hexenq/kuroshiro</a></li>
+          <li>KAKASI：<a href="http://kakasi.namazu.org/index.html.ja">kakasi.namazu.org/index.html.ja</a> ／ <a href="https://manpages.debian.org/testing/kakasi/kakasi.1.ja.html">manpages.debian.org/testing/kakasi</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="libgroup" style="margin-top:0">RUST 系</p>
+        <ul class="sources tight">
+          <li>Lindera：上記 Node.js 系の Lindera 項目と共通（GitHub リポジトリとリリースページはライブ表示でも確認）</li>
+          <li>Vibrato：<a href="https://github.com/daac-tools/vibrato">github.com/daac-tools/vibrato</a> ／ <a href="https://docs.rs/vibrato/latest/vibrato/dictionary/struct.Dictionary.html">docs.rs/vibrato Dictionary</a> ／ <a href="https://lib.rs/crates/vibrato">lib.rs/crates/vibrato</a></li>
+          <li>sudachi.rs：<a href="https://github.com/WorksApplications/sudachi.rs">github.com/WorksApplications/sudachi.rs</a> ／ <a href="https://github.com/WorksApplications/SudachiDict">github.com/WorksApplications/SudachiDict</a></li>
+          <li>MeCab バインディング：<a href="https://lib.rs/crates/mecab">lib.rs/crates/mecab</a></li>
+          <li>Vaporetto：<a href="https://github.com/daac-tools/vaporetto">github.com/daac-tools/vaporetto</a> ／ <a href="https://docs.rs/vaporetto">docs.rs/vaporetto</a> ／ <a href="https://lib.rs/crates/vaporetto">lib.rs/crates/vaporetto</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    調査日：2026年10月30日〜31日。用途想定は個人開発の小説執筆用デスクトップエディター（Windows 向け）で、ルビ自動付与・校正支援・表記ゆれ検出・本文検索のための分かち書き。「未確認」と記した項目は、公式情報で確認できなかったものである。
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---- copy buttons ---- */
+  document.querySelectorAll(".copybtn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var text = btn.getAttribute("data-copy");
+      var done = function(){
+        var old = btn.textContent;
+        btn.textContent = "コピー済み";
+        setTimeout(function(){ btn.textContent = old; }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, function(){ fallback(); });
+      } else { fallback(); }
+      function fallback(){
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+
+  /* ---- reading explorer ---- */
+  var LIBS = {
+    lindera: {
+      code: "// Lindera (Rust)\nlet token = &tokens[0];\ntoken.details[6]  // 原形\ntoken.details[7]  // 読み（カタカナ）\ntoken.details[8]  // 発音\n\n// Lindera (Node / WASM) も同じ\ntoken.details[7]",
+      note: "IPADIC のフィールド構成。辞書が UniDic 等の場合は並びが異なる点に注意。品詞・原形・読み・発音がすべて取得できる。",
+      tokens: [["品詞","名詞,固有名詞,組織"],["原形","関西国際空港"],["読み","カンサイコクサイクウコウ"],["発音","カンサイコクサイクーコー"]]
+    },
+    kuromoji: {
+      code: "// kuromoji 系 (Node)\nconst tokens = tokenizer.tokenize(text);\ntokens[0].reading        // 読み（カタカナ）\ntokens[0].pronunciation  // 発音\ntokens[0].basic_form     // 原形\ntokens[0].pos            // 品詞",
+      note: "構造化プロパティで最も素直に取れる。ルビには reading をひらがな化して使うのが定石で、kuroshiro はまさにこの変換を行う。",
+      tokens: [["読みフィールド","token.reading"],["発音","token.pronunciation"],["原形","token.basic_form"]]
+    },
+    vibrato: {
+      code: "// Vibrato (Rust)\nlet f = token.feature();\n// MeCab 形式の CSV 文字列をパースする\n// index 7 = 読み / index 8 = 発音\nlet fields: Vec<&str> = f.split(',').collect();\nlet reading = fields[7];",
+      note: "個別フィールドの getter はなく、feature() の CSV 文字列をパースする。README 例：本 → 名詞,一般,*,*,*,*,本,ホン,ホン。",
+      tokens: [["feature() 例","本,ホン,ホン"],["読みの位置","第8フィールド (index 7)"]]
+    },
+    sudachi: {
+      code: "// sudachi.rs (Rust)\nmorpheme.reading_form()      // 読み（カタカナ）\nmorpheme.normalized_form()   // 正規化形\n// CLI では -a オプションの\n// 「Reading Form」列に出力される",
+      note: "メソッドとして最も明示的。正規化形・同義語グループIDも取れるため表記ゆれ検出に強い。ただし JS/WASM パッケージ側の具体的なフィールド名は未確認。",
+      tokens: [["読み","reading_form()"],["正規化形","normalized_form()"],["同義語","グループID あり"]]
+    },
+    mecabnode: {
+      code: "// @enjoyjs/node-mecab (Node)\nconst tokens = await mecab.tokenize(text);\ntokens[0].feature.pos      // 品詞\ntokens[0].feature.reading  // 読み（例: コンニチハ）\n// ※ MeCab 本体の外部インストールが前提",
+      note: "ラッパー側で構造化されている。ただし配布先のユーザーにも MeCab 本体が必要になる点が実務上の壁。",
+      tokens: [["読み","feature.reading"],["前提","MeCab 本体が必須"]]
+    },
+    vaporetto: {
+      code: "// Vaporetto (Rust) — タグ予測\n// +kana モデル: かなタグ（表記上の読み）\n// +pron モデル: 発音タグ\n// 例: 東京 kana=トウキョウ / pron=トーキョー\n// ※ 辞書の読みではなく予測値（実験的）",
+      note: "辞書由来の確定的な読みや原形のルックアップではない。ユーザー辞書の実行時 API もないため、ルビ用途の主軸には不適。",
+      tokens: [["読みの性質","タグ予測（実験的）"],["確実性","辞書の読みではない"]]
+    },
+    tiny: {
+      code: "// TinySegmenter 系\n// 分かち書きのみ。辞書を持たないため\n// 品詞・読み・原形は一切取得できない",
+      note: "ルビ付与には使えない。分かち書きだけの最軽量フォールバックとしてのみ候補になる。",
+      tokens: [["読み","取得不可"],["用途","分かち書きのみ"]]
+    }
+  };
+  var codeEl = document.getElementById("lab-code");
+  var noteEl = document.getElementById("lab-note");
+  var tokEl  = document.getElementById("lab-tokens");
+  function setLib(key){
+    var d = LIBS[key]; if(!d) return;
+    codeEl.textContent = d.code;
+    noteEl.textContent = d.note;
+    tokEl.innerHTML = "";
+    d.tokens.forEach(function(pair){
+      var s = document.createElement("span");
+      var b = document.createElement("b"); b.textContent = pair[0] + "：";
+      s.appendChild(b); s.appendChild(document.createTextNode(pair[1]));
+      tokEl.appendChild(s);
+    });
+    document.querySelectorAll(".chip").forEach(function(c){
+      c.setAttribute("aria-pressed", c.getAttribute("data-lib") === key ? "true" : "false");
+    });
+  }
+  document.querySelectorAll(".chip").forEach(function(c){
+    c.addEventListener("click", function(){ setLib(c.getAttribute("data-lib")); });
+  });
+  setLib("lindera");
+
+  /* ---- user dictionary schematic ---- */
+  var toggle = document.getElementById("dict-toggle");
+  var state  = document.getElementById("dict-state");
+  var view   = document.getElementById("splitview");
+  function renderSplit(){
+    var on = toggle.getAttribute("aria-checked") === "true";
+    state.textContent = "ユーザー辞書：" + (on ? "ON（登録済み）" : "OFF");
+    view.innerHTML = "";
+    function word(text, sub, merged){
+      var w = document.createElement("span");
+      w.className = "w" + (merged ? " merged" : "");
+      w.appendChild(document.createTextNode(text));
+      var s = document.createElement("small"); s.textContent = sub;
+      w.appendChild(s);
+      return w;
+    }
+    if (on){
+      view.appendChild(word("東京スカイツリー", "トウキョウスカイツリー（登録した読み）", true));
+      view.appendChild(word("に", "助詞", false));
+      view.appendChild(word("登る", "動詞", false));
+    } else {
+      view.appendChild(word("東京", "トウキョウ", false));
+      view.appendChild(word("スカイ", "スカイ", false));
+      view.appendChild(word("ツリー", "ツリー", false));
+      view.appendChild(word("に", "助詞", false));
+      view.appendChild(word("登る", "動詞", false));
+    }
+  }
+  toggle.addEventListener("click", function(){
+    var on = toggle.getAttribute("aria-checked") === "true";
+    toggle.setAttribute("aria-checked", on ? "false" : "true");
+    renderSplit();
+  });
+  renderSplit();
+
+  /* ---- comparison tabs ---- */
+  var tabNode = document.getElementById("tab-node");
+  var tabRust = document.getElementById("tab-rust");
+  var panelNode = document.getElementById("panel-node");
+  var panelRust = document.getElementById("panel-rust");
+  function selectTab(which){
+    var node = which === "node";
+    tabNode.setAttribute("aria-selected", node ? "true" : "false");
+    tabRust.setAttribute("aria-selected", node ? "false" : "true");
+    panelNode.classList.toggle("hidden", !node);
+    panelRust.classList.toggle("hidden", node);
+  }
+  tabNode.addEventListener("click", function(){ selectTab("node"); });
+  tabRust.addEventListener("click", function(){ selectTab("rust"); });
+})();
+</script>
+</body>
+</html>

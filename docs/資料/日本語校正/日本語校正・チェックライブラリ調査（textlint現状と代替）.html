@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>日本語校正・チェックライブラリ調査（textlint現状と代替）</title>
+    <style>
+      :root {
+        --bg: #faf8f4;
+        --surface: #ffffff;
+        --surface-2: #f2eee6;
+        --ink: #23201b;
+        --ink-2: #57534a;
+        --ink-3: #8a857a;
+        --line: #ddd6c9;
+        --accent: #b3352b; /* 校正の赤鉛筆 */
+        --accent-soft: #f7e8e5;
+        --ok: #2e6b3e;
+        --ok-soft: #e6f0e8;
+        --warn: #8a5a12;
+        --warn-soft: #f7ecd4;
+        --bad: #a02c22;
+        --bad-soft: #f7e3e0;
+        --code-bg: #efeae0;
+        --radius: 10px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #17150f;
+          --surface: #201d16;
+          --surface-2: #2a271d;
+          --ink: #ece7db;
+          --ink-2: #b6b0a1;
+          --ink-3: #8a857a;
+          --line: #3a362a;
+          --accent: #e07a6d;
+          --accent-soft: #3a2420;
+          --ok: #8fc79c;
+          --ok-soft: #22301f;
+          --warn: #ddb46a;
+          --warn-soft: #38300f;
+          --bad: #e58a7d;
+          --bad-soft: #38211d;
+          --code-bg: #2a271d;
+        }
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", system-ui, sans-serif;
+        font-size: 16px;
+        line-height: 1.85;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px 80px; }
+      h1, h2, h3 { font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; font-weight: 700; line-height: 1.45; }
+      h2 { font-size: 1.55rem; margin: 0 0 6px; }
+      h3 { font-size: 1.12rem; margin: 26px 0 8px; }
+      p { margin: 10px 0; }
+      a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+      code {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: .86em;
+        background: var(--code-bg);
+        padding: .08em .38em;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+      }
+      .small { font-size: .86rem; color: var(--ink-2); }
+      .unconfirmed { color: var(--warn); font-weight: 600; }
+
+      /* ---- hero ---- */
+      header.hero { padding: 44px 0 8px; }
+      .hero .kicker { color: var(--accent); font-size: .85rem; letter-spacing: .14em; font-weight: 700; margin: 0 0 10px; }
+      .hero h1 { font-size: 2rem; margin: 0 0 14px; }
+      .hero .lede { font-size: 1.02rem; color: var(--ink-2); margin: 0; }
+      .meta-row { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; font-size: .88rem; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 14px; }
+      .meta-row b { color: var(--ink); font-weight: 600; }
+
+      /* ---- verdict ---- */
+      .verdict {
+        margin: 30px 0 8px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-top: 4px solid var(--accent);
+        border-radius: var(--radius);
+        padding: 22px 24px 14px;
+      }
+      .verdict h2 { font-size: 1.3rem; }
+      .verdict ol { margin: 12px 0 10px; padding-left: 1.4em; }
+      .verdict li { margin: 10px 0; }
+      .verdict li::marker { color: var(--accent); font-weight: 700; }
+
+      section { margin-top: 52px; }
+      .sec-head { border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 16px; }
+      .sec-head .no { color: var(--accent); font-family: "SF Mono", ui-monospace, monospace; font-size: .9rem; letter-spacing: .08em; }
+      .sec-head p { margin: 4px 0 0; color: var(--ink-2); font-size: .94rem; }
+
+      /* ---- timeline ---- */
+      .timeline { list-style: none; margin: 18px 0 6px; padding: 0 0 0 14px; border-left: 2px solid var(--line); }
+      .timeline li { position: relative; padding: 0 0 16px 18px; }
+      .timeline li::before {
+        content: ""; position: absolute; left: -21px; top: .55em;
+        width: 10px; height: 10px; border-radius: 50%;
+        background: var(--bg); border: 3px solid var(--ink-3);
+      }
+      .timeline li.latest::before { border-color: var(--accent); background: var(--accent); }
+      .timeline .ver { font-weight: 700; font-size: 1.05rem; }
+      .timeline .date { color: var(--ink-2); font-size: .88rem; margin-left: 10px; }
+      .timeline .note { display: block; color: var(--ink-2); font-size: .92rem; }
+
+      .callout {
+        background: var(--warn-soft); border-radius: var(--radius);
+        padding: 14px 18px; margin: 18px 0; font-size: .94rem;
+      }
+      .callout b.t { color: var(--warn); }
+      .callout.blue { background: var(--surface-2); }
+      .callout.blue b.t { color: var(--ink); }
+
+      /* ---- tables ---- */
+      .tbl-wrap { margin: 16px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: .92rem; line-height: 1.65; background: var(--surface); }
+      th, td { border: 1px solid var(--line); padding: 9px 12px; vertical-align: top; text-align: left; }
+      th { background: var(--surface-2); font-weight: 700; white-space: nowrap; }
+      td .sub { display: block; color: var(--ink-2); font-size: .85rem; }
+      .tag { display: inline-block; font-size: .76rem; font-weight: 700; padding: .05em .55em; border-radius: 999px; white-space: nowrap; }
+      .tag.ok { background: var(--ok-soft); color: var(--ok); }
+      .tag.warn { background: var(--warn-soft); color: var(--warn); }
+      .tag.bad { background: var(--bad-soft); color: var(--bad); }
+      .tag.neutral { background: var(--surface-2); color: var(--ink-2); }
+      @media (max-width: 640px) {
+        table, tbody, tr, td { display: block; width: 100%; }
+        thead { display: none; }
+        tr { border: 1px solid var(--line); margin-bottom: 12px; background: var(--surface); }
+        td { border: none; border-top: 1px solid var(--line); padding: 8px 12px; }
+        td:first-child { border-top: none; background: var(--surface-2); font-weight: 700; }
+        td::before { content: attr(data-th); display: block; font-size: .74rem; color: var(--ink-3); font-weight: 700; letter-spacing: .05em; }
+        td:first-child::before { content: none; }
+      }
+
+      ul.tight { margin: 8px 0; padding-left: 1.3em; }
+      ul.tight li { margin: 5px 0; }
+      .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+      @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+      .mini-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; }
+      .mini-card h4 { margin: 0 0 6px; font-size: .98rem; }
+      .mini-card p, .mini-card li { font-size: .92rem; }
+      .mini-card ul { margin: 4px 0; padding-left: 1.2em; }
+
+      /* ---- structure diagram (why versions break) ---- */
+      .stack { margin: 18px 0; display: grid; gap: 8px; }
+      .stack .layer {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+        padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline;
+      }
+      .stack .layer b { font-size: .98rem; }
+      .stack .layer span { color: var(--ink-2); font-size: .88rem; }
+      .stack .arrow { text-align: center; color: var(--accent); font-size: .85rem; font-weight: 700; line-height: 1.2; }
+      ol.reasons { padding-left: 1.4em; }
+      ol.reasons li { margin: 12px 0; }
+      ol.reasons li::marker { font-weight: 700; color: var(--accent); }
+
+      /* ---- sample detection ---- */
+      .sample {
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 18px 20px; margin: 16px 0; font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+        font-size: 1.02rem; line-height: 2.1;
+      }
+      .sample .hit { background: var(--accent-soft); border-bottom: 2px solid var(--accent); padding: 0 .1em; border-radius: 2px; cursor: pointer; }
+      .sample .hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .sample .hit.active { background: var(--accent); color: #fff; }
+      .sample-note { font-size: .9rem; min-height: 3.2em; background: var(--surface-2); border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-family: inherit; }
+      .sample-note .rn { font-weight: 700; color: var(--accent); }
+
+      /* ---- tabs (recommendations) ---- */
+      .tabs { display: flex; gap: 8px; margin: 18px 0 0; flex-wrap: wrap; }
+      .tabs button {
+        font: inherit; font-size: .95rem; font-weight: 700; cursor: pointer;
+        padding: 9px 18px; border-radius: 999px; border: 1px solid var(--line);
+        background: var(--surface); color: var(--ink-2);
+      }
+      .tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+      .tab-panel { display: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 24px; margin-top: 14px; }
+      .tab-panel.active { display: block; }
+      .tab-panel h3 { margin-top: 0; }
+      .tab-panel ul { padding-left: 1.3em; }
+      .tab-panel li { margin: 7px 0; }
+
+      /* ---- coverage matrix ---- */
+      .cov td.c { text-align: center; font-weight: 700; }
+      .cov .y { color: var(--ok); }
+      .cov .p { color: var(--warn); }
+      .cov .n { color: var(--bad); }
+      .cov .u { color: var(--ink-3); font-weight: 400; font-size: .85rem; }
+
+      footer { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 18px; }
+      footer h3 { font-size: 1rem; }
+      footer ul { font-size: .86rem; color: var(--ink-2); padding-left: 1.2em; overflow-wrap: anywhere; }
+      .src-note { font-size: .8rem; color: var(--ink-3); margin-top: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+
+      <header class="hero">
+        <p class="kicker">調査レポート</p>
+        <h1>日本語校正・チェックライブラリ調査<br />textlint の現状と、Node.js / Rust の代替</h1>
+        <p class="lede">小説執筆用デスクトップエディター（Electron 版＝Node.js、Tauri 版＝Rust）で使う日本語校正の選択肢を調べた。焦点は、現在使用中の textlint のメンテナンス状況と「バージョン不一致が起きやすい理由」、そして移行先があるかどうか。</p>
+        <div class="meta-row">
+          <span>調査日 <b>2026年10月31日</b></span>
+          <span>前提 <b>処理はローカル完結（本文を外部 API に送らない）</b></span>
+          <span>想定チェック <b>誤字脱字・ら抜き・二重否定・助詞の誤り／重なり・表記ゆれ・句読点・文体</b></span>
+        </div>
+      </header>
+
+      <div class="verdict">
+        <h2>結論</h2>
+        <ol>
+          <li><strong>textlint 本体は今も活発にメンテナンスされている。</strong>最新は v15.8.0（2026年8月1日）で、2026年に入ってからも v15.6〜v15.8 と複数リリースがある（直前の v15.5.0 は2025年12月7日）。Electron 版については「textlint を捨てる理由」は乏しく、<strong>バージョン固定の運用に切り替えて使い続けるのが第一推奨</strong>。</li>
+          <li><strong>バージョン不一致は偶然ではなく構造の問題。</strong>本体・プリセット・個別ルール・形態素解析層が別々の npm パッケージで、それぞれ異なる要求バージョンを持つ。プリセットは半年に一度のメジャー更新で依存を一括で引き上げるため、そのタイミングで壊れやすい。対策は「exact pin＋lockfile 固定＋年2回の計画的更新＋自前サンプル文での回帰テスト」。</li>
+          <li><strong>Node.js で textlint に代わる日本語校正ライブラリは、実質的に存在しない。</strong>日本語対応を名乗る他候補は、VS Code 拡張（ライブラリではない）、Java 製ツール（RedPen／LanguageTool、サイドカー運用）、Web サービス（Enno、外部送信）のいずれか。</li>
+          <li><strong>Rust にも日本語校正専用 crate は（本調査の範囲では）存在しない。</strong>Tauri 版は「<strong>Lindera＋校正ルールの自前移植</strong>」が本命。textlint-ja のルールは形態素トークンのパターンマッチが中心のため移植可能なものが多いが、工数は相応にかかる。2026年8月に登場した Rust 製日本語推敲 CLI「Suiko」は有望だが、対象は文章の自然さ・読みやすさで、ら抜き等はカバーしない。</li>
+          <li><strong>小説用途では技術文書向けプリセットの丸ごと適用は不適切</strong>（感嘆符禁止、文長100字、弱い表現禁止など）。プリセット丸ごとではなく、<strong>個別ルールの選り抜き＋小説専用ルール（general-novel-style-ja）＋prh 辞書（登場人物名・表記ゆれ）</strong>が現実的な構成になる。</li>
+        </ol>
+      </div>
+
+      <section id="textlint-now">
+        <div class="sec-head">
+          <span class="no">01</span>
+          <h2>textlint 本体の現状 ― 問題は本体ではない</h2>
+          <p>最新バージョンと 2025〜2026年のリリース状況（GitHub Releases を 2026-10-31 に直接確認）</p>
+        </div>
+
+        <ul class="timeline">
+          <li>
+            <span class="ver">v15.0.0</span><span class="date">2025年6月22日 ― メジャーリリース</span>
+            <span class="note"><strong>Node.js 20 以上が必須</strong>に。旧 API（<code>TextLintEngine</code>、<code>TextFixEngine</code>、<code>TextLintCore</code>、シングルトン <code>textlint</code>）が削除され、<code>createLinter()</code> に一本化された。</span>
+          </li>
+          <li>
+            <span class="ver">v15.5.0</span><span class="date">2025年12月7日</span>
+          </li>
+          <li>
+            <span class="ver">v15.6.0</span><span class="date">2026年4月26日</span>
+          </li>
+          <li>
+            <span class="ver">v15.7.0</span><span class="date">2026年5月14日</span>
+            <span class="note">v15.7.1 が同年5月18日に続く。</span>
+          </li>
+          <li class="latest">
+            <span class="ver">v15.8.0</span><span class="date">2026年8月1日 ― 最新</span>
+            <span class="note"><code>@textlint/kernel</code> も同じく 15.8.0。ライセンスは MIT。</span>
+          </li>
+        </ul>
+
+        <p>本体は「枯れたプロジェクト」ではない。2025年にメジャーバージョンを上げて旧 API を整理し、MCP 対応などの機能追加も続いている。組み込み API としては <code>textlint</code> パッケージが <code>createLinter()</code> / <code>loadTextlintrc()</code> を提供し、<code>lintText(text, filePath)</code> で文字列を直接 lint できる。<code>.textlintrc</code> を介さず低レベルに制御したい場合は <code>@textlint/kernel</code> を直接使う。</p>
+
+        <div class="callout">
+          <b class="t">Electron 側の注意:</b> textlint v15 は Node.js 20+ を要求する。使用中の Electron が内蔵する Node のバージョン（<code>process.versions.node</code>）が 20 未満だと v15 は動かない。Electron のバージョンと内蔵 Node の対応表そのものは本調査では<span class="unconfirmed">未確認</span>のため、実機で <code>process.versions.node</code> を確認してほしい。
+        </div>
+      </section>
+
+      <section id="presets">
+        <div class="sec-head">
+          <span class="no">02</span>
+          <h2>日本語プリセット・ルールの更新状況</h2>
+          <p>本体と違い、周辺ルール側は足並みがそろっていない。半年周期の「まとめ上げ」が更新の山になる。</p>
+        </div>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>パッケージ</th><th>最新（確認時点）</th><th>備考</th><th>ライセンス</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>textlint-rule-preset-ja-technical-writing</code></td>
+                <td data-th="最新"><strong>v12.0.2</strong><span class="sub">GitHub 表示「1月2日」（年の表示がない形式のため 2026年1月2日と推定）</span></td>
+                <td data-th="備考"><strong>安定版は半年に一度（1月と7月）だけ更新</strong>。次期版は <code>@next</code> で先行提供。この「半年まとめ上げ」がバージョンジャンプの主因</td>
+                <td data-th="ライセンス">MIT</td>
+              </tr>
+              <tr>
+                <td><code>textlint-rule-preset-japanese</code></td>
+                <td data-th="最新"><strong>v10.0.4</strong><span class="sub">同上「1月2日」</span></td>
+                <td data-th="備考">こちらも半年ごとにメジャー更新。ja-technical-writing より緩めの汎用プリセットと説明される（二次情報）</td>
+                <td data-th="ライセンス">MIT</td>
+              </tr>
+              <tr>
+                <td><code>textlint-rule-preset-jtf-style</code></td>
+                <td data-th="最新"><strong>v3.0.2</strong><span class="sub">2025年3月1日</span></td>
+                <td data-th="備考">JTF 日本語標準スタイルガイド（翻訳用、2016年改訂第2.2版）準拠。文体統一・句読点・カタカナ・数字・スペース・括弧などの<strong>表記系</strong>が中心で、ら抜き等の文法系は対象外。一部の辞書ベースルールはデフォルト無効で、README 自身が精度の曖昧さに言及</td>
+                <td data-th="ライセンス">コードは MIT、元ガイドは CC BY-SA 由来</td>
+              </tr>
+              <tr>
+                <td><code>textlint-rule-ja-no-redundant-expression</code>（単体）</td>
+                <td data-th="最新"><strong>4.0.1</strong><span class="sub">リリース日は<span class="unconfirmed">未確認</span></span></td>
+                <td data-th="備考">冗長表現（「〜することができる」「[サ変名詞]を行う」等）。辞書 dict1〜dict6 の個別無効化・例外指定が可能。ja-technical-writing にも同梱</td>
+                <td data-th="ライセンス"><span class="unconfirmed">未確認</span></td>
+              </tr>
+              <tr>
+                <td><code>textlint-rule-preset-ja-spacing</code></td>
+                <td data-th="最新">v3.0.x 系<span class="sub">releases 先頭 v3.0.4「10月17日」</span></td>
+                <td data-th="備考">半角・全角間のスペース等の表記系</td>
+                <td data-th="ライセンス"><span class="unconfirmed">未確認</span></td>
+              </tr>
+              <tr>
+                <td><code>@textlint-ja/textlint-rule-preset-ai-writing</code></td>
+                <td data-th="最新">v1.6.x<span class="sub">2026年4〜7月に複数リリース</span></td>
+                <td data-th="備考">AI 生成文っぽいパターンの検出。<strong>textlint 15.1.0 以上が必須</strong>と明記。小説用途では本命ではないが、「新しいルールが新しい本体を要求する」実例</td>
+                <td data-th="ライセンス"><span class="unconfirmed">未確認</span></td>
+              </tr>
+              <tr>
+                <td><code>textlint-rule-prh</code></td>
+                <td data-th="最新"><strong>6.1.0</strong><span class="sub">2026年10月の導入記事のインストール結果より</span></td>
+                <td data-th="備考">YAML 辞書 <code>prh.yml</code>（<code>expected</code> / <code>pattern</code>、正規表現可、<code>specs</code> で辞書自体のテスト可）による表記ゆれチェック。<code>--fix</code> 対応。<strong>固有名詞・登場人物名の表記統一はこれが担う</strong></td>
+                <td data-th="ライセンス"><span class="unconfirmed">未確認</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>ja-technical-writing がカバーする範囲</h3>
+        <p>想定チェック（ら抜き、二重否定、助詞の重なり、句読点、文体、冗長表現、誤用）は、ほぼこのプリセット＋個別ルールでカバーできる。</p>
+        <div class="cols">
+          <div class="mini-card">
+            <h4>文法・表現系</h4>
+            <ul>
+              <li>二重否定を使わない、<strong>ら抜き言葉を使わない</strong></li>
+              <li>逆接の接続助詞「が」の連続、同じ接続詞の連続、<strong>同じ助詞の連続</strong></li>
+              <li>同一単語の連続（誤字候補）、よくある日本語の誤用、冗長な表現</li>
+              <li>弱い日本語表現（〜かもしれない等）の禁止</li>
+            </ul>
+          </div>
+          <div class="mini-card">
+            <h4>表記・文体系</h4>
+            <ul>
+              <li>文長 100 字以下、読点は 1 文 3 つまで、カンマ 3 つまで、漢字連続 6 字まで</li>
+              <li>漢数字と算用数字の使い分け、ですます／である調の統一、文末句点「。」の統一</li>
+              <li>感嘆符・疑問符の禁止、括弧の対応、不自然なアルファベット</li>
+              <li>UTF8-MAC 濁点、制御文字、ゼロ幅スペース、半角カナの禁止</li>
+            </ul>
+          </div>
+        </div>
+        <p class="small">不足するのは主に (a) 文脈依存の誤字脱字・誤変換（「紹介／照会」の区別などはどのルールベースツールでも困難）、(b) 表記ゆれ（prh 等の辞書型ルールの追加が必要）、(c) 小説固有の作法（下記の専用ルールが別途ある）。</p>
+
+        <h3>小説向けに重要な個別ルール</h3>
+        <ul class="tight">
+          <li><code>textlint-rule-general-novel-style-ja</code> ― 日本の小説の一般的作法: 段落先頭の字下げ（全角スペース）または開き括弧のみ許可、閉じ括弧の直前に句読点を置かない、！？の直後にスペース、三点リーダー（…）とダッシュ（―）は偶数個、句読点・中黒・長音符の連続禁止、アラビア数字の桁数制限など。バージョンと最新リリース日は<span class="unconfirmed">未確認</span>（Web 小説執筆者の利用例では <code>^1.3.0</code>）。</li>
+          <li><code>@textlint-ja/textlint-rule-no-synonyms</code> ― Sudachi 同義語辞書を使い「リポジトリ／レポジトリ」型の同義語表記ゆれを検出。</li>
+          <li><code>textlint-rule-ja-no-orthographic-variants</code> ― 表記ゆれチェック。</li>
+          <li><code>textlint-rule-ja-simple-user-dictionary</code> ― シンプルなユーザー辞書で校正するルール。prh と並んで作品固有語彙の受け皿になる。</li>
+          <li>新規ルール <code>textlint-rule-wording</code> は <code>Intl.Segmenter</code> ベースの辞書型ルールだが、<strong>Node.js 22 以上の full-ICU 環境と textlint 15.3.0 以上が必須で、調査時点では「npm 公開前」</strong>と README に記載。将来の選択肢としてのみ把握しておけばよい。</li>
+        </ul>
+
+        <h3>検出イメージ（textlint 構成が拾う例）</h3>
+        <p class="small">下線部をタップ／クリックすると、対応するルールが表示される。これは検出範囲の説明用の例示であり、このページ自体が校正を実行しているわけではない。</p>
+        <div class="sample" id="sampleText">
+          <p style="margin:0">　その料理はとても美味しくて、<span class="hit" role="button" tabindex="0" data-rule="ja-no-redundant-expression" data-msg="「〜することができる」は冗長表現として検出される（辞書 dict1〜dict6 の個別無効化・例外指定が可能）。">食べることができる</span>量ではなかった。彼女は扉を開けて<span class="hit" role="button" tabindex="0" data-rule="preset-ja-technical-writing（漢字連続のチェック）" data-msg="漢字の連続はプリセットでは 6 字まで。7 字以上の固有名詞などは誤検出になりやすく、小説では上限を緩めるか対象外にする調整対象。">行政文書管理責任者</span>の判子が押された書類を手に取ったが、すぐに「これは<span class="hit" role="button" tabindex="0" data-rule="preset-ja-technical-writing（助詞・接続助詞の連続チェック）" data-msg="逆接の接続助詞「が」の連続、同じ助詞の連続はプリセットのチェック対象。会話文では誤検出になりやすいので、小説では個別に緩める対象。">見たことがあるはずだが</span>思い出せない」と呟いた。昨日の晩御飯は<span class="hit" role="button" tabindex="0" data-rule="prh（表記ゆれ）" data-msg="prh.yml に expected: カレーライス と登録しておくと、「カレーライス」のような異なる表記が現れたときに統一を促す（pattern に正規表現も書ける）。登場人物名の表記統一も同じ仕組みで担う。">カレーライス</span>だったはずなのに、冷蔵庫には何も入っていなかったのである。</p>
+        </div>
+        <div class="sample-note" id="sampleNote">下線部を選ぶと、どのルールが検出するかがここに表示される。</div>
+      </section>
+
+      <section id="why-breaks">
+        <div class="sec-head">
+          <span class="no">03</span>
+          <h2>バージョン不一致が起きやすい構造的な理由</h2>
+          <p>「たまたま壊れた」のではなく、依存の組み方がそうなっている。</p>
+        </div>
+
+        <div class="stack" aria-hidden="true">
+          <div class="layer"><b>textlint 本体（kernel）</b><span>@textlint/* はモノレポ内で同一バージョン・同時リリース ― ここは揃っている</span></div>
+          <div class="arrow">↑ peerDependencies: <code>textlint &gt;= x.y.z</code>（最低要求のみ宣言）</div>
+          <div class="layer"><b>プリセット</b><span>textlint-ja 組織 ― 半年ごとにメジャー更新し、依存を一括で引き上げる</span></div>
+          <div class="layer"><b>個別ルール</b><span>textlint-rule 組織・個人作者 ― それぞれ別ペースでリリース</span></div>
+          <div class="arrow">↓ 形態素解析が必要なルールはここに依存</div>
+          <div class="layer"><b>形態素解析層</b><span>kuromojin 3.0.1 / kuromoji 0.1.2 ― ともに 2018年3月が最終リリース</span></div>
+        </div>
+
+        <ol class="reasons">
+          <li><strong>すべて独立した npm パッケージで、別組織・別作者が別ペースで出す。</strong>ルール側は <code>peerDependencies</code> に <code>textlint: "&gt;= x.y.z"</code> の形で最低要求バージョンを宣言するのが公式作法。したがって「新しいルールを1つ足したら本体の引き上げが必要だった」が普通に起きる（例: preset-ai-writing は textlint 15.1.0+、textlint-rule-wording は 15.3.0+ と Node 22+）。</li>
+          <li><strong>プリセットの半年更新が「まとめ上げ」になる。</strong>ja-technical-writing の CHANGELOG では、メジャー更新のタイミングで Node 要件や sentence-splitter、kuromojin 等の依存メジャーが一括で上がる。小さな競合が半年分たまって一度に表面化する。</li>
+          <li><strong>形態素解析層が 2018 年で止まっている。</strong>kuromoji 0.1.2 / kuromojin 3.0.1 は 2018年3月が最終リリース（Apache-2.0）。kuromojin は kuromoji のバージョンを pin して辞書の重複を避けていると明記しており、この層は「固定されたまま古い」。メンテナンス fork（<code>@faanau/kuromoji</code>）も出現している。</li>
+          <li><strong>配置ずれでも壊れる。</strong>textlint とルールを別々の場所にインストールすると <code>"Failed to load textlint's module"</code> になることが FAQ にある。バージョンだけでなく、インストール構成そのものが壊れやすさに効く。</li>
+        </ol>
+
+        <div class="callout blue">
+          <b class="t">付き合い方（推奨運用）:</b> 依存は <code>^</code> ではなく <strong>exact pin</strong>（完全固定）＋ lockfile をコミットし、更新はプリセットの半年サイクル（1月・7月）に合わせて<strong>年2回の計画的更新</strong>としてまとめて行う。その際、自前のサンプル文（引っかかってほしい文／引っかかってほしくない文のセット）で回帰テストを回し、検出結果の変化を確認してから本採用する。
+        </div>
+      </section>
+
+      <section id="node-alt">
+        <div class="sec-head">
+          <span class="no">04</span>
+          <h2>Node.js の代替候補 ― ライブラリとしては実質なし</h2>
+          <p>日本語校正に対応するものと、英語専用・対象外のものを区別して並べる。</p>
+        </div>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>候補</th><th>形態</th><th>日本語校正</th><th>備考</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>テキスト校正くん（ICS）</td>
+                <td data-th="形態">VS Code 拡張（MIT）</td>
+                <td data-th="日本語校正"><span class="tag ok">対応</span><span class="sub">チェック項目は textlint 系とほぼ同一</span></td>
+                <td data-th="備考">npm ライブラリとして使えるかは<span class="unconfirmed">未確認</span>（拡張機能として配布）。エディターへの組み込みには向かない</td>
+              </tr>
+              <tr>
+                <td>RedPen</td>
+                <td data-th="形態">Java 製ツール（Apache-2.0）</td>
+                <td data-th="日本語校正"><span class="tag ok">対応</span><span class="sub">DoubleNegative、DoubledJoshi、Okurigana、KatakanaSpellCheck、JapaneseExpressionVariation 等</span></td>
+                <td data-th="備考">最新 1.10.4（GitHub Releases 先頭。日付の年は<span class="unconfirmed">未確認</span>、1.10.3 は 2019-10-06）。Windows 対応。使うなら JVM 同梱／サイドカー運用になる</td>
+              </tr>
+              <tr>
+                <td>LanguageTool</td>
+                <td data-th="形態">Java 製（サーバ／組み込み）</td>
+                <td data-th="日本語校正"><span class="tag warn">限定的</span><span class="sub">日本語は XML ルール 735 件・Java ルール 0 件・スペルチェックなし</span></td>
+                <td data-th="備考">ら抜き等のカテゴリはあるが、第三者実測では明らかな誤りも検出漏れがあった。ライセンス LGPL-2.1（二次情報）</td>
+              </tr>
+              <tr>
+                <td>Vale</td>
+                <td data-th="形態">Go 製単一バイナリ</td>
+                <td data-th="日本語校正"><span class="tag bad">不可</span><span class="sub">YAML＋正規表現のスタイルチェック。公開スタイルは英語系のみ</span></td>
+                <td data-th="備考">日本語の文法チェックにはならない</td>
+              </tr>
+              <tr>
+                <td>alex / write-good</td>
+                <td data-th="形態">npm ライブラリ</td>
+                <td data-th="日本語校正"><span class="tag bad">不可</span><span class="sub">英語専用（write-good の README 自身が "naive linter for English prose" と明記）</span></td>
+                <td data-th="備考">日本語文には使えない</td>
+              </tr>
+              <tr>
+                <td>Enno / Yahoo! 校正 API / A3RT Proofreading API</td>
+                <td data-th="形態">Web サービス / 外部 API</td>
+                <td data-th="日本語校正"><span class="tag warn">対応</span></td>
+                <td data-th="備考">本文を外部送信するため、本調査の前提（ローカル完結）から<span class="tag bad">対象外</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>つまり Electron 版で「textlint をやめて別の npm ライブラリに乗り換える」という選択肢は、現時点では存在しない。残るのは textlint の運用を整えるか、Java 製ツールをサイドカーとして抱えるか、の二択になる。</p>
+      </section>
+
+      <section id="rust">
+        <div class="sec-head">
+          <span class="no">05</span>
+          <h2>Rust の選択肢 ― 校正専用 crate はなく、「土台＋自前ルール」が現実</h2>
+          <p>crates.io で日本語校正そのものを行う crate は、本調査の範囲では確認できなかった。あるのは形態素解析器と、英語専用／外部依存のものだけ。</p>
+        </div>
+
+        <h3>注目: Suiko（Rust 製・日本語推敲 CLI、2026年登場）</h3>
+        <div class="mini-card">
+          <p style="margin-top:0"><code>nwiizo/suiko</code> ― v0.3.11、2026年8月17日に作成された新しいプロジェクト。MIT、Rust 1.97+、Windows x86_64 バイナリあり。SudachiDict を埋め込むためバイナリは 200MB 台。</p>
+          <ul>
+            <li>対象は<strong>文章の自然さ・反復・リズム・読解負荷</strong>。読解負荷の中に二重否定・長文・漢字連続・「の」連鎖を含む</li>
+            <li><strong>ら抜き・助詞の重なり・表記ゆれは主対象ではない</strong>（<code>terms --audit</code> で表記揺れの集計はあり）</li>
+            <li><code>.suiko.toml</code> で形態素ベースの <code>word_rules</code> を自作できる</li>
+            <li>ライブラリ crate として利用できるかは<span class="unconfirmed">未確認</span>。CLI としてなら Tauri からサイドカー的に呼べる可能性がある</li>
+          </ul>
+        </div>
+
+        <h3>形態素解析の土台（校正ルールを自前実装する場合）</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>crate</th><th>最新（確認時点）</th><th>辞書・組み込み</th><th>ユーザー辞書</th><th>ライセンス</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Lindera</strong></td>
+                <td data-th="最新">6.2.0</td>
+                <td data-th="辞書">辞書の埋め込み可（feature: ipadic / unidic / sudachidict / neologd）。純 Rust。v5 で Segmenter と lindera-analysis に分離</td>
+                <td data-th="ユーザー辞書"><span class="tag ok">対応</span><span class="sub">CSV（表層形, 品詞, 読み）― 登場人物名向き</span></td>
+                <td data-th="ライセンス">MIT</td>
+              </tr>
+              <tr>
+                <td>Vibrato（daac-tools）</td>
+                <td data-th="最新">0.5.x<span class="sub">Python wrapper 0.5.2</span></td>
+                <td data-th="辞書">別途ダウンロードしたコンパイル済みモデルが必要</td>
+                <td data-th="ユーザー辞書"><span class="unconfirmed">未確認</span></td>
+                <td data-th="ライセンス">Apache-2.0（組織表示より）</td>
+              </tr>
+              <tr>
+                <td>Vaporetto</td>
+                <td data-th="最新">0.6.5</td>
+                <td data-th="辞書">モデル別途。KyTea モデルではタグ予測不可</td>
+                <td data-th="ユーザー辞書"><span class="unconfirmed">未確認</span></td>
+                <td data-th="ライセンス">MIT / Apache-2.0</td>
+              </tr>
+              <tr>
+                <td>sudachi.rs（crate <code>sudachi</code>）</td>
+                <td data-th="最新">0.6.9<span class="sub">2025年1月の記録。0.7 系は辞書形式 V1 化・不安定で厳密な pin が推奨される</span></td>
+                <td data-th="辞書">分割モード A/B/C、正規化表記あり</td>
+                <td data-th="ユーザー辞書"><span class="tag warn">条件付き</span><span class="sub">CSV から、システム辞書と同一版でビルドが必要</span></td>
+                <td data-th="ライセンス">Apache-2.0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <b class="t">Lindera の注意:</b> v1.3（2025年10月）→ 6.x（2026年8月）とメジャーリリースが頻繁で、<strong>API の変動が大きい</strong>。採用する場合はバージョンを固定し、追随は計画的に行う前提で考えること。
+        </div>
+
+        <h3>校正名目の crate の実態</h3>
+        <ul class="tight">
+          <li><strong>Harper</strong> ― 英語専用の文法チェッカー（Apache-2.0）。日本語は対象外。</li>
+          <li><strong>languagetool-rust</strong> ― LanguageTool サーバ用のクライアント。デフォルトは公開 API ＝本文の外部送信になるため、ローカル完結の前提ではローカルサーバの同梱が別途必要。</li>
+          <li><strong>codebook</strong> ― コード向けスペルチェックで、散文は対象外と明記されている。</li>
+        </ul>
+      </section>
+
+      <section id="coverage">
+        <div class="sec-head">
+          <span class="no">06</span>
+          <h2>チェック項目カバレッジ比較</h2>
+          <p>小説執筆で欲しいチェックを、構成ごとに並べたもの。●＝対応、△＝部分的／条件付き、×＝対象外。</p>
+        </div>
+
+        <div class="tbl-wrap">
+          <table class="cov">
+            <thead>
+              <tr><th>チェック項目</th><th>textlint 構成<br />（選り抜き＋prh＋小説ルール）</th><th>RedPen</th><th>LanguageTool（日本語）</th><th>Suiko</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ら抜き言葉</td>
+                <td class="c y" data-th="textlint 構成">●</td>
+                <td class="c u" data-th="RedPen">未確認</td>
+                <td class="c p" data-th="LanguageTool">△<span class="sub" style="text-align:left">カテゴリはあるが第三者実測で検出漏れ</span></td>
+                <td class="c n" data-th="Suiko">×<span class="sub" style="text-align:left">主対象ではない</span></td>
+              </tr>
+              <tr>
+                <td>二重否定</td>
+                <td class="c y" data-th="textlint 構成">●</td>
+                <td class="c y" data-th="RedPen">●<span class="sub" style="text-align:left">DoubleNegative</span></td>
+                <td class="c u" data-th="LanguageTool">未確認</td>
+                <td class="c p" data-th="Suiko">△<span class="sub" style="text-align:left">読解負荷として含む</span></td>
+              </tr>
+              <tr>
+                <td>助詞の誤り・重なり</td>
+                <td class="c y" data-th="textlint 構成">●<span class="sub" style="text-align:left">同じ助詞の連続、接続助詞「が」の連続</span></td>
+                <td class="c y" data-th="RedPen">●<span class="sub" style="text-align:left">DoubledJoshi</span></td>
+                <td class="c u" data-th="LanguageTool">未確認</td>
+                <td class="c n" data-th="Suiko">×<span class="sub" style="text-align:left">主対象ではない（「の」連鎖は読解負荷として扱う）</span></td>
+              </tr>
+              <tr>
+                <td>表記ゆれ</td>
+                <td class="c y" data-th="textlint 構成">●<span class="sub" style="text-align:left">prh / no-synonyms / ja-no-orthographic-variants を追加</span></td>
+                <td class="c y" data-th="RedPen">●<span class="sub" style="text-align:left">JapaneseExpressionVariation、KatakanaSpellCheck</span></td>
+                <td class="c n" data-th="LanguageTool">×<span class="sub" style="text-align:left">日本語のスペルチェックなし</span></td>
+                <td class="c p" data-th="Suiko">△<span class="sub" style="text-align:left">terms --audit で集計のみ</span></td>
+              </tr>
+              <tr>
+                <td>句読点・文体</td>
+                <td class="c y" data-th="textlint 構成">●</td>
+                <td class="c y" data-th="RedPen">●<span class="sub" style="text-align:left">Okurigana 等</span></td>
+                <td class="c p" data-th="LanguageTool">△<span class="sub" style="text-align:left">XML ルール 735 件の範囲内</span></td>
+                <td class="c p" data-th="Suiko">△<span class="sub" style="text-align:left">長文・漢字連続など読みやすさ側</span></td>
+              </tr>
+              <tr>
+                <td>小説の作法（字下げ、！？後のスペース等）</td>
+                <td class="c y" data-th="textlint 構成">●<span class="sub" style="text-align:left">general-novel-style-ja</span></td>
+                <td class="c n" data-th="RedPen">×</td>
+                <td class="c n" data-th="LanguageTool">×</td>
+                <td class="c n" data-th="Suiko">×</td>
+              </tr>
+              <tr>
+                <td>文脈依存の誤字脱字・誤変換</td>
+                <td class="c p" data-th="textlint 構成">△<span class="sub" style="text-align:left">どのルールベースでも困難</span></td>
+                <td class="c p" data-th="RedPen">△</td>
+                <td class="c p" data-th="LanguageTool">△</td>
+                <td class="c p" data-th="Suiko">△<span class="sub" style="text-align:left">自然さの観点からは一部拾える可能性（未検証）</span></td>
+              </tr>
+              <tr>
+                <td>登場人物名など固有名詞との連携</td>
+                <td class="c y" data-th="textlint 構成">●<span class="sub" style="text-align:left">prh 辞書 / ja-simple-user-dictionary</span></td>
+                <td class="c u" data-th="RedPen">未確認</td>
+                <td class="c u" data-th="LanguageTool">未確認</td>
+                <td class="c p" data-th="Suiko">△<span class="sub" style="text-align:left">.suiko.toml の word_rules で自作可</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="recommend">
+        <div class="sec-head">
+          <span class="no">07</span>
+          <h2>推奨構成</h2>
+          <p>Electron 版は「残して運用を整える」、Tauri 版は「土台を選んでルールを移植する」。</p>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="推奨構成の切り替え">
+          <button role="tab" aria-selected="true" data-tab="electron">Electron 版（novelaid-editor）</button>
+          <button role="tab" aria-selected="false" data-tab="tauri">Tauri 版（novelaide）</button>
+        </div>
+
+        <div class="tab-panel active" id="panel-electron" role="tabpanel">
+          <h3>textlint を継続し、バージョン固定の運用に切り替える</h3>
+          <ul>
+            <li><strong>本体は textlint v15 系を使い続ける。</strong>代替の npm ライブラリは実質存在せず、本体自体は活発に更新されている。移行コストに見合う行き先がない。</li>
+            <li><strong>依存は exact pin＋lockfile 固定。</strong><code>^</code> や <code>~</code> で浮かせず、更新は自分のタイミングでだけ行う。</li>
+            <li><strong>更新は年2回、プリセットの半年サイクル（1月・7月）に合わせて計画的に。</strong>その際、自前サンプル文セットで回帰テストを回し、検出の増減を確認してから採用する。</li>
+            <li><strong>構成はプリセット丸ごとではなく選り抜きで。</strong>ja-technical-writing から文法・表現系（ら抜き、二重否定、助詞の連続、冗長表現、誤用）を拾い、感嘆符・疑問符の禁止、文長100字、弱い表現の禁止など小説に合わないものは外す。</li>
+            <li><strong>小説作法は <code>textlint-rule-general-novel-style-ja</code>、表記統一は <code>textlint-rule-prh</code></strong>（<code>prh.yml</code> に登場人物名・作品固有語を登録）。同義語ゆれには <code>@textlint-ja/textlint-rule-no-synonyms</code>。</li>
+            <li>組み込みは <code>createLinter()</code> ＋ <code>lintText()</code> で文字列を直接 lint する形が v15 の作法。Electron 内蔵 Node が 20 以上か（<code>process.versions.node</code>）を先に確認する。</li>
+          </ul>
+        </div>
+
+        <div class="tab-panel" id="panel-tauri" role="tabpanel">
+          <h3>Lindera を土台に、textlint-ja のルールを自前移植する</h3>
+          <ul>
+            <li><strong>校正専用 crate はないので、「形態素解析＋ルール実装」が前提。</strong>土台は <strong>Lindera</strong> が第一候補: 純 Rust、辞書埋め込み可、ユーザー辞書が CSV（表層形, 品詞, 読み）で登場人物名にそのまま使える。ただしメジャーリリースが頻繁で API 変動が大きいため、バージョンは固定して使う。</li>
+            <li><strong>移植の見込み:</strong> textlint-ja のルールの多くは形態素トークン列のパターンマッチ（助詞の連続、二重否定、ら抜き、冗長表現の辞書照合など）なので、トークン形式を Lindera に合わせて書き直せば移植可能なものが多い。辞書型のもの（prh 相当）は YAML 辞書の読み込みから自前になる。</li>
+            <li><strong>Electron 版と仕様をそろえる工夫:</strong> チェック項目の定義とサンプル文セット（回帰テスト）を両版で共有し、「同じ文には同じ指摘が返る」ことをテストで担保すると、二重管理の痛みが減る。</li>
+            <li><strong>Suiko は補助として様子見。</strong>ら抜き等は対象外だが、「自然さ・読みやすさ」の推敲は textlint 系にない観点。CLI として呼べる形なら、書き上がった章の見直し用に後付けできる。ライブラリ利用可否は<span class="unconfirmed">未確認</span>。</li>
+            <li>sudachi.rs はユーザー辞書の反映に辞書ビルドが必要で運用が重く、Vibrato / Vaporetto はモデルの別途配布が必要 ― 組み込みの軽さでは Lindera が勝る。</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="unknowns">
+        <div class="sec-head">
+          <span class="no">08</span>
+          <h2>未確認事項</h2>
+          <p>本調査で一次情報に当たれなかった項目。推測で断定していない。</p>
+        </div>
+        <ul class="tight">
+          <li>Electron のバージョンと内蔵 Node.js バージョンの対応表（実機の <code>process.versions.node</code> で確認可能）</li>
+          <li><code>textlint-rule-ja-no-redundant-expression</code> 単体のリリース日とライセンス、<code>textlint-rule-prh</code>・<code>textlint-rule-preset-ja-spacing</code>・preset-ai-writing のライセンス</li>
+          <li><code>textlint-rule-general-novel-style-ja</code> の最新バージョンとリリース日（利用例では <code>^1.3.0</code>）</li>
+          <li>RedPen の最新版 1.10.4 のリリース日（年）、および RedPen のら抜き検出の有無</li>
+          <li>preset-ja-technical-writing v12.0.2 / preset-japanese v10.0.4 の「1月2日」が 2026年であること（GitHub の表示形式からの推定）</li>
+          <li>Suiko をライブラリ crate として利用できるか</li>
+          <li>sudachi.rs（crate <code>sudachi</code>）0.7 系の crates.io 公式公開状況。Suiko は v0.7.0 を非公式再配布 crate 経由で使用している</li>
+          <li>Vibrato / Vaporetto のユーザー辞書対応</li>
+        </ul>
+      </section>
+
+      <footer>
+        <h3>出典（2026年10月31日閲覧）</h3>
+        <ul>
+          <li>textlint Releases ― <a href="https://github.com/textlint/textlint/releases">github.com/textlint/textlint/releases</a>（本体バージョン・日付を直接確認）</li>
+          <li>textlint 公式ブログ（v15 の変更点）― <a href="https://textlint.org/blog/">textlint.org/blog/</a></li>
+          <li>textlint 公式ドキュメント「Use as Modules」― <a href="https://textlint.org/docs/use-as-modules/">textlint.org/docs/use-as-modules/</a></li>
+          <li>textlint ルール作成ドキュメント（peerDependencies の作法）― <a href="https://github.com/textlint/textlint/blob/master/docs/rule.md">github.com/textlint/textlint/blob/master/docs/rule.md</a></li>
+          <li>preset-ja-technical-writing ― <a href="https://github.com/textlint-ja/textlint-rule-preset-ja-technical-writing/releases">github.com/textlint-ja/textlint-rule-preset-ja-technical-writing</a>（ルール範囲は同リポジトリ README）</li>
+          <li>preset-japanese ― <a href="https://github.com/textlint-ja/textlint-rule-preset-japanese/releases">github.com/textlint-ja/textlint-rule-preset-japanese/releases</a></li>
+          <li>preset-JTF-style ― <a href="https://github.com/textlint-ja/textlint-rule-preset-JTF-style">github.com/textlint-ja/textlint-rule-preset-JTF-style</a></li>
+          <li>textlint-rule-prh ― <a href="https://github.com/textlint-rule/textlint-rule-prh">github.com/textlint-rule/textlint-rule-prh</a></li>
+          <li>textlint-rule-general-novel-style-ja ― <a href="https://github.com/io-monad/textlint-rule-general-novel-style-ja">github.com/io-monad/textlint-rule-general-novel-style-ja</a></li>
+          <li>textlint-rule-wording README ― <a href="https://github.com/textlint-rule/textlint-rule-wording/blob/main/README.ja.md">github.com/textlint-rule/textlint-rule-wording</a></li>
+          <li>ja-no-redundant-expression（unpkg）― <a href="https://app.unpkg.com/textlint-rule-ja-no-redundant-expression@4.0.1/files/README.md">app.unpkg.com/textlint-rule-ja-no-redundant-expression@4.0.1</a></li>
+        </ul>
+        <p class="src-note">本ページは 2026年10月31日時点の調査結果の要約であり、各ライブラリの最新状況は上記出典で再確認できる。「未確認」と記した項目は一次情報に当たれなかったもので、推測による補完はしていない。</p>
+      </footer>
+
+    </div>
+
+    <script>
+      (function () {
+        // Tabs: 推奨構成の切り替え
+        var buttons = document.querySelectorAll(".tabs button[data-tab]");
+        buttons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            buttons.forEach(function (b) { b.setAttribute("aria-selected", b === btn ? "true" : "false"); });
+            document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("active"); });
+            var panel = document.getElementById("panel-" + btn.getAttribute("data-tab"));
+            if (panel) panel.classList.add("active");
+          });
+        });
+
+        // Sample detection highlights
+        var note = document.getElementById("sampleNote");
+        var hits = document.querySelectorAll("#sampleText .hit");
+        var showHit = function (h) {
+          hits.forEach(function (x) { x.classList.remove("active"); });
+          h.classList.add("active");
+          if (note) {
+            note.innerHTML = "";
+            var rn = document.createElement("span");
+            rn.className = "rn";
+            rn.textContent = h.getAttribute("data-rule") + " ― ";
+            note.appendChild(rn);
+            note.appendChild(document.createTextNode(h.getAttribute("data-msg") || ""));
+          }
+        };
+        hits.forEach(function (h) {
+          h.addEventListener("click", function () { showHit(h); });
+          h.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showHit(h); }
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
